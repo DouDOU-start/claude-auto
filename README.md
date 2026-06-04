@@ -2,6 +2,10 @@
 
 基于 Chrome DevTools Protocol 的 Claude 邮箱注册自动化工具。支持代理启动独立浏览器 profile、发送 magic link、读取 Microsoft 邮箱、完成 onboarding，并提取 cookies 中的 `sessionKey`。
 
+## 免责声明
+
+本项目仅用于技术研究、自动化流程验证和个人学习。使用者应自行确认其行为符合目标服务条款、账号使用规则以及所在地法律法规。因使用本项目造成的账号限制、服务中断、数据损失或其他后果，由使用者自行承担。
+
 ## 功能
 
 - 每次运行创建全新 Chrome profile。
@@ -294,3 +298,7 @@ git status --short --ignored
 - 浏览器控制使用 Chrome DevTools Protocol。
 - magic-link 请求在 `claude.ai` 页面上下文中执行。
 - 每次运行默认创建新的 profile、DevTools 端口和本地代理桥。
+
+## License
+
+MIT License. See `LICENSE`.

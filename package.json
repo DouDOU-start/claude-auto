@@ -2,6 +2,7 @@
   "name": "claude-email-automation",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Automate Claude email magic-link request through a fresh proxied Chrome profile.",
   "scripts": {
