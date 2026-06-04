@@ -1,0 +1,19 @@
+{
+  "name": "claude-email-automation",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Automate Claude email magic-link request through a fresh proxied Chrome profile.",
+  "scripts": {
+    "interactive": "node src/interactive-register.js",
+    "auto-register-mail": "node src/auto-register-mail.js",
+    "open-session": "node src/open-with-session.js",
+    "mail-token": "node src/mail-token.js",
+    "send": "node src/send-email.js",
+    "install-browser": "node src/install-browser.js",
+    "help": "node src/send-email.js --help"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
