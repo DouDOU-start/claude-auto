@@ -682,7 +682,7 @@ function printHelp() {
   --domain <域名>          随机邮箱域名，默认 k9ray.com。
   --name <姓名>            显示名称，默认随机英文姓名。
   --birthday <MM/DD/YYYY>  新用户引导生日，默认 ${DEFAULT_BIRTHDAY}。
-  --proxy <代理地址>       上游认证代理，优先于 config/proxy.json。
+  --proxy <代理地址>       上游认证代理，优先于 config/app.local.json。
   --chrome <路径>          Chrome 或 Chromium 可执行文件。
   --bridge-port <端口>     本地代理桥端口，默认随机。
   --debug-port <端口>      Chrome DevTools 端口，默认随机。

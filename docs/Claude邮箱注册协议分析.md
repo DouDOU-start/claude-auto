@@ -42,21 +42,23 @@ Chrome -> http://127.0.0.1:<local-port> -> authenticated upstream proxy
 配置文件：
 
 ```text
-config/proxy.json
+config/app.local.json
 ```
 
 格式：
 
 ```json
 {
-  "proxyUrl": "REPLACE_WITH_AUTHENTICATED_HTTP_PROXY_URL"
+  "proxy": {
+    "url": "REPLACE_WITH_AUTHENTICATED_HTTP_PROXY_URL"
+  }
 }
 ```
 
 代理优先级：
 
 ```text
---proxy > CLAUDE_PROXY_URL > config/proxy.json
+--proxy > CLAUDE_PROXY_URL > config/app.local.json
 ```
 
 动态代理场景下，每次运行都会创建新的 profile、本地代理端口和 DevTools 端口，避免复用旧浏览器状态。

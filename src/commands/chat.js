@@ -26,7 +26,7 @@ async function main() {
     },
   });
   if (config.sessionKeys.length === 0) {
-    throw new Error("请通过环境变量或 config/claude.local.json 配置 sessionKey。");
+    throw new Error("请通过环境变量或 config/app.local.json 配置 sessionKey。");
   }
 
   console.log("正在初始化 Claude 浏览器会话……");

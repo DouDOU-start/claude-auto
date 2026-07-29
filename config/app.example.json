@@ -1,0 +1,21 @@
+{
+  "proxy": {
+    "url": "REPLACE_WITH_AUTHENTICATED_HTTP_PROXY_URL"
+  },
+  "browser": {
+    "path": "",
+    "headless": false
+  },
+  "claude": {
+    "sessionKeys": [
+      "REPLACE_WITH_SESSION_KEY"
+    ],
+    "model": "claude-sonnet-5",
+    "effort": "medium"
+  },
+  "api": {
+    "host": "127.0.0.1",
+    "port": 8080,
+    "key": ""
+  }
+}

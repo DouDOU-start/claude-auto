@@ -238,7 +238,7 @@ function printHelp() {
 选项：
   --email <邮箱>         接收 Magic Link 的邮箱，默认随机生成。
   --domain <域名>        随机邮箱域名，默认 k9ray.com。
-  --proxy <代理地址>     上游认证代理，优先于 config/proxy.json。
+  --proxy <代理地址>     上游认证代理，优先于 config/app.local.json。
   --chrome <路径>        Chrome 或 Chromium 可执行文件。
   --bridge-port <端口>   本地代理桥端口，默认随机。
   --debug-port <端口>    Chrome DevTools 端口，默认随机。

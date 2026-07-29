@@ -2,9 +2,7 @@ logs/
 profiles/
 *.log
 browsers/
-config/proxy.json
-config/claude.local.json
-config/claude.local.yaml
+config/app.local.json
 config/.cookie-cache.json
 coverage/
 .env

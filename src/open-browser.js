@@ -60,7 +60,7 @@ function printHelp() {
 
 选项：
   --url <地址>          打开的地址，默认 https://claude.ai/。
-  --proxy <代理地址>    上游认证代理，优先于 config/proxy.json。
+  --proxy <代理地址>    上游认证代理，优先于 config/app.local.json。
   --chrome <路径>       Chrome 或 Chromium 可执行文件。
   --profile-dir <路径>  Chrome 用户目录。
   --bridge-port <端口>  本地代理桥端口，默认随机。

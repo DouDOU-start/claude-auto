@@ -322,7 +322,7 @@ async function main() {
     },
   });
   if (config.sessionKeys.length === 0) {
-    throw new Error("请通过环境变量或 config/claude.local.json 配置 sessionKey。");
+    throw new Error("请通过环境变量或 config/app.local.json 配置 sessionKey。");
   }
   if (!isLoopback(config.host) && !config.apiKey) {
     throw new Error("监听非本机地址时必须配置 CLAUDE_API_KEY。");

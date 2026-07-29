@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export function resolveProxyUrl({ requestedProxy = "", projectRoot }) {
-  const configuredProxy = readProxyConfig(projectRoot).proxyUrl;
+  const configuredProxy = readAppConfig(projectRoot).proxy?.url || "";
   const proxyUrl = requestedProxy || process.env.CLAUDE_PROXY_URL || configuredProxy;
   if (!proxyUrl) {
     throw new Error(
@@ -10,7 +10,7 @@ export function resolveProxyUrl({ requestedProxy = "", projectRoot }) {
         "没有配置上游代理。",
         "请传入 --proxy <代理地址>，",
         "设置 CLAUDE_PROXY_URL，",
-        `或创建 ${join(projectRoot, "config", "proxy.json")}。`,
+        `或创建 ${join(projectRoot, "config", "app.local.json")}。`,
       ].join(" "),
     );
   }
@@ -23,15 +23,11 @@ export function maskProxy(proxyUrl) {
   return `${parsed.protocol}//${auth}${parsed.hostname}:${parsed.port || 80}`;
 }
 
-function readProxyConfig(projectRoot) {
-  const path = join(projectRoot, "config", "proxy.json");
+export function readAppConfig(projectRoot) {
+  const path = join(projectRoot, "config", "app.local.json");
   if (!existsSync(path)) return {};
 
   const raw = readFileSync(path, "utf8").trim();
   if (!raw) return {};
-
-  const config = JSON.parse(raw);
-  return {
-    proxyUrl: config.proxyUrl || config.proxy || "",
-  };
+  return JSON.parse(raw);
 }

@@ -50,63 +50,61 @@ npm run install-browser
 $env:CLAUDE_SKIP_BROWSER_DOWNLOAD = "1"
 ```
 
-## 代理配置
+## 统一配置
 
-配置文件：
+所有运行模块统一读取一个本地配置：
 
 ```text
-config/proxy.json
+config/app.local.json
 ```
 
-格式：
+仓库只提交同结构的模板 `config/app.example.json`，真实配置已被 Git 忽略。首次使用时复制模板：
+
+```powershell
+Copy-Item .\config\app.example.json .\config\app.local.json
+```
+
+配置分为四个区域：
 
 ```json
 {
-  "proxyUrl": "REPLACE_WITH_AUTHENTICATED_HTTP_PROXY_URL"
+  "proxy": {
+    "url": "http://user:password@host:port"
+  },
+  "browser": {
+    "path": "",
+    "headless": false
+  },
+  "claude": {
+    "sessionKeys": ["sk-ant-sid02-..."],
+    "model": "claude-sonnet-5",
+    "effort": "medium"
+  },
+  "api": {
+    "host": "127.0.0.1",
+    "port": 8080,
+    "key": ""
+  }
 }
 ```
 
-优先级：
-
-```text
---proxy > CLAUDE_PROXY_URL > config/proxy.json
-```
-
-代理链路：
-
-```text
-Chrome -> http://127.0.0.1:<port> -> authenticated upstream proxy
-```
-
-仓库提供模板：`config/proxy.example.json`。
-
-### Claude 本地配置
-
-聊天和 API 服务使用：
-
-```text
-config/claude.local.json
-```
-
-同时兼容被忽略的 `config/claude.local.yaml`，旧 Go 配置已迁移到该位置。
-
-从模板复制：
-
-```powershell
-Copy-Item .\config\claude.example.json .\config\claude.local.json
-```
-
-至少填写 `sessionKeys`。也可以完全使用环境变量：
+注册、代理浏览器、聊天和 API 服务都从该文件读取各自需要的字段。也可以使用环境变量覆盖：
 
 ```powershell
 $env:CLAUDE_SESSION_KEY = "sk-ant-sid02-..."
 $env:CLAUDE_PROXY_URL = "http://user:password@host:port"
 ```
 
-敏感配置优先级：
+配置优先级：
 
 ```text
-命令行参数 > 环境变量 > config/claude.local.json > config/proxy.json
+命令行参数 > 环境变量 > config/app.local.json
+```
+
+代理链路：
+
+```text
+Chrome -> http://127.0.0.1:<port> -> authenticated upstream proxy
 ```
 
 ## 快速开始
