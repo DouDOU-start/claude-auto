@@ -17,6 +17,18 @@ export function resolveProxyUrl({ requestedProxy = "", projectRoot, env = proces
   return proxyUrl;
 }
 
+export function resolveRandomEmailDomain({
+  requestedDomain = "",
+  projectRoot,
+  env = process.env,
+  defaultDomain = "k9ray.com",
+}) {
+  const configuredDomain = readAppConfig(projectRoot).mail?.randomDomain || "";
+  const domain =
+    requestedDomain || env.APP_RANDOM_EMAIL_DOMAIN || configuredDomain || defaultDomain;
+  return normalizeEmailDomain(domain);
+}
+
 export function maskProxy(proxyUrl) {
   const parsed = new URL(proxyUrl);
   const auth = parsed.username || parsed.password ? "***@" : "";
@@ -30,4 +42,18 @@ export function readAppConfig(projectRoot) {
   const raw = readFileSync(path, "utf8").trim();
   if (!raw) return {};
   return JSON.parse(raw);
+}
+
+function normalizeEmailDomain(value) {
+  const domain = String(value || "").trim().replace(/^@+/, "").toLowerCase();
+  if (
+    !domain ||
+    domain.length > 253 ||
+    !domain.includes(".") ||
+    /[\s/@:?#]/.test(domain) ||
+    domain.split(".").some((part) => !part || part.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(part))
+  ) {
+    throw new Error(`随机邮箱后缀不是有效域名：${value}`);
+  }
+  return domain;
 }

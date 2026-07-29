@@ -6,6 +6,9 @@
     "path": "",
     "headless": false
   },
+  "mail": {
+    "randomDomain": "k9ray.com"
+  },
   "providers": {
     "claude": {
       "sessionKeys": [

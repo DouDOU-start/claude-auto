@@ -65,7 +65,7 @@ config/app.local.json
 Copy-Item .\config\app.example.json .\config\app.local.json
 ```
 
-配置分为代理、浏览器、服务适配器和 API 四个区域：
+配置分为代理、浏览器、邮箱、服务适配器和 API 五个区域：
 
 ```json
 {
@@ -75,6 +75,9 @@ Copy-Item .\config\app.example.json .\config\app.local.json
   "browser": {
     "path": "",
     "headless": false
+  },
+  "mail": {
+    "randomDomain": "k9ray.com"
   },
   "providers": {
     "claude": {
@@ -99,6 +102,7 @@ Copy-Item .\config\app.example.json .\config\app.local.json
 ```powershell
 $env:CLAUDE_SESSION_KEY = "sk-ant-sid02-..."
 $env:APP_PROXY_URL = "http://user:password@host:port"
+$env:APP_RANDOM_EMAIL_DOMAIN = "mail.example.com"
 ```
 
 配置优先级：
@@ -106,6 +110,8 @@ $env:APP_PROXY_URL = "http://user:password@host:port"
 ```text
 命令行参数 > 通用环境变量 > 兼容环境变量 > config/app.local.json
 ```
+
+`mail.randomDomain` 是未传入 `--email` 时使用的随机邮箱后缀。可以填写 `mail.example.com` 或 `@mail.example.com`；程序会自动去掉开头的 `@`。如果没有任何配置，则回退使用 `k9ray.com`。
 
 代理链路：
 
@@ -247,8 +253,8 @@ npm run interactive -- --provider grok --email user@example.com --no-proxy
 
 ```text
 --provider <name>           注册服务适配器，支持 claude、grok。
---email <email>             注册邮箱，默认随机 @k9ray.com。
---domain <domain>           随机邮箱域名，默认 k9ray.com。
+--email <email>             注册邮箱，未提供时自动生成随机邮箱。
+--domain <domain>           随机邮箱后缀，优先于统一配置。
 --name <name>               显示名称，默认随机英文名。
 --given-name <name>         Grok 注册名字。
 --family-name <name>        Grok 注册姓氏。
@@ -269,7 +275,13 @@ npm run interactive -- --provider grok --email user@example.com --no-proxy
 npm run send -- --email test-demo@k9ray.com
 ```
 
-随机邮箱：
+使用配置文件中的随机邮箱后缀：
+
+```powershell
+npm run send
+```
+
+临时覆盖随机邮箱后缀：
 
 ```powershell
 npm run send -- --domain k9ray.com

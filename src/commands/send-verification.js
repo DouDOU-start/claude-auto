@@ -8,7 +8,7 @@ import {
   timestamp,
   waitForBrowserStop,
 } from "../core/browser-runtime.js";
-import { maskProxy, resolveProxyUrl } from "../config.js";
+import { maskProxy, resolveProxyUrl, resolveRandomEmailDomain } from "../config.js";
 import { getRegistrationProvider } from "../providers/index.js";
 
 export async function runSendVerificationCommand(argv = process.argv.slice(2)) {
@@ -21,7 +21,12 @@ export async function runSendVerificationCommand(argv = process.argv.slice(2)) {
   const projectRoot = projectRootFrom(import.meta.url);
   const provider = getRegistrationProvider(args.provider);
   const proxyUrl = args.noProxy ? "" : resolveProxyUrl({ requestedProxy: args.proxy, projectRoot });
-  const email = args.email || `test-${randomBytes(5).toString("hex")}@${args.domain || "k9ray.com"}`;
+  const email =
+    args.email ||
+    `test-${randomBytes(5).toString("hex")}@${resolveRandomEmailDomain({
+      requestedDomain: args.domain,
+      projectRoot,
+    })}`;
   const logDir = resolve(args.logDir || join(projectRoot, "logs"));
   const keepOpen = !args.noKeepOpen;
   let runtime = null;
@@ -100,7 +105,7 @@ function printHelp() {
 选项：
   --provider <名称>      注册服务适配器，支持 claude、grok。
   --email <邮箱>         接收邮箱验证信息的邮箱，默认随机生成。
-  --domain <域名>        随机邮箱域名，默认 k9ray.com。
+  --domain <域名>        随机邮箱后缀，优先于统一配置。
   --proxy <代理地址>     上游认证代理，优先于 config/app.local.json。
   --no-proxy             本次发送不使用代理。
   --chrome <路径>        Chrome 或 Chromium 可执行文件。

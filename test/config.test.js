@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadClaudeConfig, splitSessionKeys } from "../src/claude/config.js";
-import { resolveProxyUrl } from "../src/config.js";
+import { resolveProxyUrl, resolveRandomEmailDomain } from "../src/config.js";
 
 test("会话密钥支持数组、逗号和换行，并自动去重", () => {
   assert.deepEqual(splitSessionKeys("a, b\na"), ["a", "b"]);
@@ -20,6 +20,7 @@ test("统一 JSON 配置能够加载全部运行参数", async () => {
       JSON.stringify({
         proxy: { url: "http://user:pass@example.com:8080" },
         browser: { path: "/browser", headless: false },
+        mail: { randomDomain: "mail.example.com" },
         providers: {
           claude: { sessionKeys: ["abc"], model: "model", effort: "high" },
         },
@@ -37,6 +38,7 @@ test("统一 JSON 配置能够加载全部运行参数", async () => {
     assert.equal(config.host, "localhost");
     assert.equal(config.port, 9000);
     assert.equal(config.apiKey, "key");
+    assert.equal(resolveRandomEmailDomain({ projectRoot, env: {} }), "mail.example.com");
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
   }
@@ -78,6 +80,43 @@ test("注册代理优先读取通用环境变量并兼容旧变量", async () =>
         env: { CLAUDE_PROXY_URL: "http://claude.example.com:8080" },
       }),
       "http://claude.example.com:8080",
+    );
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("随机邮箱后缀支持命令行、环境变量和统一配置优先级", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "email-domain-config-test-"));
+  try {
+    await mkdir(join(projectRoot, "config"));
+    await writeFile(
+      join(projectRoot, "config", "app.local.json"),
+      JSON.stringify({ mail: { randomDomain: "configured.example.com" } }),
+      "utf8",
+    );
+    assert.equal(
+      resolveRandomEmailDomain({ projectRoot, env: {} }),
+      "configured.example.com",
+    );
+    assert.equal(
+      resolveRandomEmailDomain({
+        projectRoot,
+        env: { APP_RANDOM_EMAIL_DOMAIN: "@environment.example.com" },
+      }),
+      "environment.example.com",
+    );
+    assert.equal(
+      resolveRandomEmailDomain({
+        requestedDomain: "@argument.example.com",
+        projectRoot,
+        env: { APP_RANDOM_EMAIL_DOMAIN: "environment.example.com" },
+      }),
+      "argument.example.com",
+    );
+    assert.throws(
+      () => resolveRandomEmailDomain({ requestedDomain: "https://invalid.example.com", projectRoot }),
+      /不是有效域名/,
     );
   } finally {
     await rm(projectRoot, { recursive: true, force: true });

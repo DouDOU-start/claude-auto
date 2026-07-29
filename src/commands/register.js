@@ -4,7 +4,7 @@ import { stdin as input, stdout as output } from "node:process";
 import { parseArgs, isCliEntry } from "../core/cli.js";
 import { projectRootFrom, waitForBrowserStop } from "../core/browser-runtime.js";
 import { registrationResultSummary, runRegistration } from "../core/registration-runner.js";
-import { resolveProxyUrl } from "../config.js";
+import { resolveProxyUrl, resolveRandomEmailDomain } from "../config.js";
 import { getRegistrationProvider } from "../providers/index.js";
 import { defaultClaudeBirthday } from "../providers/claude/profile.js";
 
@@ -18,7 +18,12 @@ export async function runRegisterCommand(argv = process.argv.slice(2)) {
   const projectRoot = projectRootFrom(import.meta.url);
   const provider = getRegistrationProvider(args.provider);
   const proxyUrl = args.noProxy ? "" : resolveProxyUrl({ requestedProxy: args.proxy, projectRoot });
-  const email = args.email || `student-${randomBytes(5).toString("hex")}@${args.domain || "k9ray.com"}`;
+  const email =
+    args.email ||
+    `student-${randomBytes(5).toString("hex")}@${resolveRandomEmailDomain({
+      requestedDomain: args.domain,
+      projectRoot,
+    })}`;
   const profile = provider.createProfile({
     name: args.name,
     givenName: args.givenName,
@@ -106,8 +111,8 @@ function printHelp() {
 
 选项：
   --provider <名称>       注册服务适配器，支持 claude、grok。
-  --email <邮箱>          注册邮箱，默认随机生成 @k9ray.com 邮箱。
-  --domain <域名>         随机邮箱域名，默认 k9ray.com。
+  --email <邮箱>          注册邮箱，未提供时自动生成随机邮箱。
+  --domain <域名>         随机邮箱后缀，优先于统一配置。
   --name <姓名>           显示名称，默认随机英文姓名。
   --given-name <名字>     Grok 注册名字，可覆盖 --name 的第一部分。
   --family-name <姓氏>    Grok 注册姓氏，可覆盖 --name 的其余部分。
