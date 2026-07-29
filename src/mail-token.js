@@ -58,11 +58,11 @@ async function main() {
   }, null, 2));
 }
 
-export async function autoGetMailToken({ refreshToken, clientId }) {
+export async function autoGetMailToken({ refreshToken, clientId, signal }) {
   let lastError = null;
   for (const mode of MODES) {
     try {
-      return await requestMailToken({ refreshToken, clientId, mode });
+      return await requestMailToken({ refreshToken, clientId, mode, signal });
     } catch (error) {
       lastError = error;
       if (mode.required) throw error;
@@ -82,9 +82,9 @@ export async function autoGetMail(refresh_token, client_id) {
   return { mode: "IMAP", token };
 }
 
-export async function getMailTokenByMode({ refreshToken, clientId, mode }) {
+export async function getMailTokenByMode({ refreshToken, clientId, mode, signal }) {
   const selected = findMode(mode);
-  return requestMailToken({ refreshToken, clientId, mode: selected });
+  return requestMailToken({ refreshToken, clientId, mode: selected, signal });
 }
 
 export async function getNewGRToken(refreshToken, clientId) {
@@ -107,7 +107,7 @@ export async function getImapToken(refreshToken, clientId) {
   return (await getMailTokenByMode({ refreshToken, clientId, mode: "imap" })).accessToken;
 }
 
-async function requestMailToken({ refreshToken, clientId, mode }) {
+async function requestMailToken({ refreshToken, clientId, mode, signal }) {
   const response = await fetch(TOKEN_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -117,6 +117,7 @@ async function requestMailToken({ refreshToken, clientId, mode }) {
       refresh_token: refreshToken,
       scope: mode.scope,
     }),
+    signal,
   });
 
   const text = await response.text();

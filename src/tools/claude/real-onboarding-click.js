@@ -1,8 +1,8 @@
-import { CdpClient, findClaudePage } from "./cdp-client.js";
+import { CdpClient, findClaudePage } from "../../cdp-client.js";
 
 const debugPort = Number(process.argv[2]);
 if (!debugPort) {
-  throw new Error("用法：node src/real-onboarding-click.js <DevTools端口>");
+  throw new Error("用法：node src/tools/claude/real-onboarding-click.js <DevTools端口>");
 }
 
 const page = await findClaudePage(debugPort);

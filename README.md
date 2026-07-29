@@ -32,7 +32,7 @@
 查找顺序：
 
 1. `--chrome <path>`
-2. `CLAUDE_BROWSER_PATH`
+2. `APP_BROWSER_PATH`（兼容 `CLAUDE_BROWSER_PATH`）
 3. 项目本地 `browsers/`
 4. 自动下载到项目本地 `browsers/`
 5. Playwright 浏览器缓存
@@ -47,7 +47,7 @@ npm run install-browser
 禁止自动下载：
 
 ```powershell
-$env:CLAUDE_SKIP_BROWSER_DOWNLOAD = "1"
+$env:APP_SKIP_BROWSER_DOWNLOAD = "1"
 ```
 
 ## 统一配置
@@ -64,7 +64,7 @@ config/app.local.json
 Copy-Item .\config\app.example.json .\config\app.local.json
 ```
 
-配置分为四个区域：
+配置分为代理、浏览器、服务适配器和 API 四个区域：
 
 ```json
 {
@@ -75,10 +75,12 @@ Copy-Item .\config\app.example.json .\config\app.local.json
     "path": "",
     "headless": false
   },
-  "claude": {
-    "sessionKeys": ["sk-ant-sid02-..."],
-    "model": "claude-sonnet-5",
-    "effort": "medium"
+  "providers": {
+    "claude": {
+      "sessionKeys": ["sk-ant-sid02-..."],
+      "model": "claude-sonnet-5",
+      "effort": "medium"
+    }
   },
   "api": {
     "host": "127.0.0.1",
@@ -90,15 +92,17 @@ Copy-Item .\config\app.example.json .\config\app.local.json
 
 注册、代理浏览器、聊天和 API 服务都从该文件读取各自需要的字段。也可以使用环境变量覆盖：
 
+旧版配置中的顶层 `claude` 区域仍可读取，建议后续统一迁移到 `providers.claude`。
+
 ```powershell
 $env:CLAUDE_SESSION_KEY = "sk-ant-sid02-..."
-$env:CLAUDE_PROXY_URL = "http://user:password@host:port"
+$env:APP_PROXY_URL = "http://user:password@host:port"
 ```
 
 配置优先级：
 
 ```text
-命令行参数 > 环境变量 > config/app.local.json
+命令行参数 > 通用环境变量 > 兼容环境变量 > config/app.local.json
 ```
 
 代理链路：
@@ -116,13 +120,13 @@ cd claude-auto
 交互式注册：
 
 ```powershell
-node .\src\interactive-register.js
+npm run interactive
 ```
 
 邮箱组自动注册：
 
 ```powershell
-node .\src\auto-register-mail.js --account "email----password----client_id----refresh_token" --keep-open-on-error
+npm run auto-register-mail -- --account "email----password----client_id----refresh_token" --keep-open-on-error
 ```
 
 使用已有 `sessionKey` 打开：
@@ -160,19 +164,19 @@ email----password----client_id----refresh_token
 单账号：
 
 ```powershell
-node .\src\auto-register-mail.js --account "user@hotmail.com----password----client_id----refresh_token"
+npm run auto-register-mail -- --account "user@hotmail.com----password----client_id----refresh_token"
 ```
 
 批量：
 
 ```powershell
-node .\src\auto-register-mail.js --accounts-file .\accounts.txt
+npm run auto-register-mail -- --accounts-file .\accounts.txt
 ```
 
 动态代理推荐参数：
 
 ```powershell
-node .\src\auto-register-mail.js `
+npm run auto-register-mail -- `
   --account "user@hotmail.com----password----client_id----refresh_token" `
   --keep-open-on-error `
   --max-attempts 5
@@ -191,6 +195,7 @@ node .\src\auto-register-mail.js `
 主要参数：
 
 ```text
+--provider <name>             注册服务适配器，当前支持 claude。
 --account <line>              单个邮箱组账号。
 --accounts-file <path>        批量账号文件。
 --mail-timeout <ms>           邮件轮询超时，默认 180000。
@@ -209,24 +214,25 @@ node .\src\auto-register-mail.js `
 ## 交互式注册
 
 ```powershell
-node .\src\interactive-register.js
+npm run interactive
 ```
 
 指定邮箱和姓名：
 
 ```powershell
-node .\src\interactive-register.js --email test-demo@k9ray.com --name "Alex Morgan"
+npm run interactive -- --email test-demo@k9ray.com --name "Alex Morgan"
 ```
 
 指定生日：
 
 ```powershell
-node .\src\interactive-register.js --birthday "01/01/1995"
+npm run interactive -- --birthday "01/01/1995"
 ```
 
 主要参数：
 
 ```text
+--provider <name>           注册服务适配器，当前支持 claude。
 --email <email>             注册邮箱，默认随机 @k9ray.com。
 --domain <domain>           随机邮箱域名，默认 k9ray.com。
 --name <name>               显示名称，默认随机英文名。
@@ -242,13 +248,13 @@ node .\src\interactive-register.js --birthday "01/01/1995"
 ## 发送 Magic Link
 
 ```powershell
-node .\src\send-email.js --email test-demo@k9ray.com
+npm run send -- --email test-demo@k9ray.com
 ```
 
 随机邮箱：
 
 ```powershell
-node .\src\send-email.js --domain k9ray.com
+npm run send -- --domain k9ray.com
 ```
 
 ## 使用 SessionKey
@@ -384,7 +390,7 @@ imap:   https://outlook.office.com/IMAP.AccessAsUser.All offline_access
   "sessionKeyLC": "1780479117030",
   "profileDir": "...",
   "debugPort": 54321,
-  "outputPath": "logs/interactive-register-....json"
+  "outputPath": "logs/claude-register-....json"
 }
 ```
 
@@ -420,8 +426,14 @@ git status --short --ignored
 - magic-link 请求在 `claude.ai` 页面上下文中执行。
 - 每次运行默认创建新的 profile、DevTools 端口和本地代理桥。
 - 聊天与 API 请求通过后台 Chrome 页面内的 `fetch` 发出。
-- `src/claude/` 负责 Claude Web 客户端、SSE 和协议适配。
-- `src/core/` 负责浏览器运行时与命令行公共能力。
+- `src/core/` 负责浏览器运行时、注册编排和命令行公共能力。
+- `src/mail/` 负责通用邮箱账号、Outlook Graph/IMAP 读取和轮询。
+- `src/providers/claude/` 只负责 Claude 登录、邮件匹配、新用户引导和会话提取。
+- `src/providers/index.js` 是注册服务适配器入口，后续接入 Grok 时在这里注册实现。
+- `src/commands/` 负责交互注册、批量注册、聊天和 API 等命令入口。
+- `src/tools/claude/` 保存 Claude 页面诊断工具，不参与正式注册流程。
+
+新增注册服务时的接口约定见 [注册服务适配器扩展指南](docs/注册服务适配器扩展指南.md)。
 
 ## 许可证
 

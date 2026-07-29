@@ -25,9 +25,9 @@ Microsoft Graph / IMAP mailbox reader
 运行入口：
 
 ```text
-src/send-email.js              只发送 magic link
-src/interactive-register.js    交互式完整注册
-src/auto-register-mail.js      邮箱组自动注册
+src/commands/send-verification.js  只发送 magic link
+src/commands/register.js           交互式完整注册
+src/commands/register-batch.js     邮箱组自动注册
 src/open-with-session.js       使用 sessionKey 打开账号
 ```
 
@@ -58,7 +58,7 @@ config/app.local.json
 代理优先级：
 
 ```text
---proxy > CLAUDE_PROXY_URL > config/app.local.json
+--proxy > APP_PROXY_URL > CLAUDE_PROXY_URL > config/app.local.json
 ```
 
 动态代理场景下，每次运行都会创建新的 profile、本地代理端口和 DevTools 端口，避免复用旧浏览器状态。
@@ -110,8 +110,7 @@ document.title == "Sign in - Claude"
 实现位置：
 
 ```text
-src/send-email.js              waitForLoginReady()
-src/interactive-register.js    waitForLoginReady()
+src/providers/claude/login.js  waitForClaudeLoginReady()
 ```
 
 常见失败：
@@ -219,8 +218,7 @@ await fetch("/api/auth/send_magic_link", {
 实现位置：
 
 ```text
-src/send-email.js              sendMagicLink()
-src/interactive-register.js    sendMagicLink()
+src/providers/claude/login.js  sendClaudeMagicLink()
 ```
 
 ## Magic Link 邮件读取
@@ -253,7 +251,9 @@ imap:   https://outlook.office.com/IMAP.AccessAsUser.All offline_access
 
 ```text
 src/mail-token.js
-src/mailbox.js
+src/mail/outlook.js
+src/mail/poller.js
+src/providers/claude/mail.js
 ```
 
 Magic link 格式：
@@ -281,8 +281,8 @@ CDP Page.navigate -> magic-link URL
 实现位置：
 
 ```text
-src/interactive-register.js    navigate()
-src/auto-register-mail.js      将邮箱中提取的 URL 写入交互式注册子进程
+src/providers/claude/login.js      openClaudeMagicLink()
+src/core/registration-runner.js    直接调用服务适配器打开验证链接
 ```
 
 ## Onboarding
@@ -318,7 +318,7 @@ What kind of work do you do
 实现位置：
 
 ```text
-src/interactive-register.js    completeOnboarding()
+src/providers/claude/onboarding.js  completeClaudeOnboarding()
 ```
 
 ## SessionKey 提取
@@ -348,7 +348,7 @@ https://platform.claude.com/
 实现位置：
 
 ```text
-src/interactive-register.js    getSessionCookies()
+src/providers/claude/session.js  extractClaudeSession()
 ```
 
 ## 自动化流程
@@ -369,13 +369,13 @@ src/interactive-register.js    getSessionCookies()
 邮箱组自动注册：
 
 ```text
-1. 启动交互式注册子进程。
-2. 等待子进程提示 Magic link URL。
-3. 轮询 Microsoft 邮箱。
-4. 提取 magic link。
-5. 写入子进程 stdin。
+1. 直接调用通用注册编排器。
+2. 启动当前服务适配器的登录页。
+3. 页面内发送邮箱验证链接。
+4. 轮询 Microsoft 邮箱并提取 magic link。
+5. 将链接直接交给 Claude 服务适配器打开。
 6. 等待注册完成或人工阻塞。
-7. 输出结果。
+7. 返回结构化结果，不依赖终端提示文字。
 ```
 
 ## 错误处理
@@ -416,19 +416,19 @@ Phone verification required
 只发送 magic link：
 
 ```powershell
-node .\src\send-email.js --email user@example.com
+npm run send -- --email user@example.com
 ```
 
 交互式完整注册：
 
 ```powershell
-node .\src\interactive-register.js --email user@example.com
+npm run interactive -- --email user@example.com
 ```
 
 邮箱组自动注册：
 
 ```powershell
-node .\src\auto-register-mail.js `
+npm run auto-register-mail -- `
   --account "user@hotmail.com----password----client_id----refresh_token" `
   --keep-open-on-error `
   --max-attempts 5
@@ -443,13 +443,19 @@ node .\src\open-with-session.js --session-key "sk-ant-sid02-..."
 ## 实现文件
 
 ```text
-src/proxy-bridge.js            本地代理桥
-src/cdp-client.js              CDP WebSocket client
-src/browser-utils.js           浏览器发现和自动下载
-src/send-email.js              magic link 发送
-src/interactive-register.js    完整交互注册
-src/auto-register-mail.js      邮箱组自动注册
-src/mail-token.js              Microsoft token 获取
-src/mailbox.js                 邮箱读取和 magic link 提取
-src/open-with-session.js       sessionKey cookie 注入
+src/core/registration-runner.js     通用注册编排
+src/providers/claude/registration.js Claude 注册服务适配器
+src/providers/claude/login.js       Claude 登录和 magic link
+src/providers/claude/onboarding.js  Claude 新用户引导
+src/providers/claude/session.js     Claude 会话提取
+src/providers/claude/mail.js        Claude 邮件链接匹配
+src/mail/outlook.js                 Outlook Graph / IMAP 读取
+src/mail/poller.js                  通用邮件轮询
+src/commands/register.js            交互式注册命令
+src/commands/register-batch.js      邮箱组注册命令
+src/proxy-bridge.js                 本地代理桥
+src/cdp-client.js                   CDP WebSocket 客户端
+src/browser-utils.js                浏览器发现和自动下载
+src/mail-token.js                   Microsoft 令牌获取
+src/open-with-session.js            sessionKey Cookie 注入
 ```

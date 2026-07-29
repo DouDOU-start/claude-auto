@@ -3,7 +3,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 export function resolveBrowserPath({ requestedPath = "", projectRoot, fallbackPath = "", autoInstall = true }) {
-  const explicitPath = requestedPath || process.env.CLAUDE_BROWSER_PATH || "";
+  const explicitPath = requestedPath || process.env.APP_BROWSER_PATH || process.env.CLAUDE_BROWSER_PATH || "";
   if (explicitPath) {
     if (existsSync(explicitPath)) return explicitPath;
     throw new Error(`配置的浏览器可执行文件不存在：${explicitPath}`);
@@ -13,7 +13,12 @@ export function resolveBrowserPath({ requestedPath = "", projectRoot, fallbackPa
   if (projectBrowser) return projectBrowser;
 
   let installError = null;
-  if (autoInstall && projectRoot && process.env.CLAUDE_SKIP_BROWSER_DOWNLOAD !== "1") {
+  if (
+    autoInstall &&
+    projectRoot &&
+    process.env.APP_SKIP_BROWSER_DOWNLOAD !== "1" &&
+    process.env.CLAUDE_SKIP_BROWSER_DOWNLOAD !== "1"
+  ) {
     try {
       return installProjectBrowser(projectRoot);
     } catch (error) {
@@ -32,7 +37,7 @@ export function resolveBrowserPath({ requestedPath = "", projectRoot, fallbackPa
       "脚本首次运行时可以自动将 Chromium 下载到 ./browsers。",
       "可执行 `npm run install-browser` 手动安装，",
       "也可以传入 --chrome <路径>，",
-      "或设置 CLAUDE_BROWSER_PATH。",
+      "或设置 APP_BROWSER_PATH（兼容 CLAUDE_BROWSER_PATH）。",
       installHint,
     ].join(" "),
   );

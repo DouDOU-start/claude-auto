@@ -1,9 +1,9 @@
-import { CdpClient, findClaudePage } from "./cdp-client.js";
+import { CdpClient, findClaudePage } from "../../cdp-client.js";
 
 const debugPort = Number(process.argv[2]);
 const value = process.argv[3];
 if (!debugPort || !value) {
-  throw new Error("用法：node src/fill-input-continue.js <DevTools端口> <值>");
+  throw new Error("用法：node src/tools/claude/fill-input-continue.js <DevTools端口> <值>");
 }
 
 const page = await findClaudePage(debugPort);

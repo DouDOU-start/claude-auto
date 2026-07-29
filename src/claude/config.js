@@ -5,12 +5,13 @@ export const DEFAULT_EFFORT = "medium";
 
 export function loadClaudeConfig({ projectRoot, env = process.env, overrides = {} }) {
   const fileConfig = readAppConfig(projectRoot);
+  const providerConfig = fileConfig.providers?.claude ?? fileConfig.claude ?? {};
   const rawSessionKeys =
     overrides.sessionKeys ??
     overrides.sessionKey ??
     env.CLAUDE_SESSION_KEYS ??
     env.CLAUDE_SESSION_KEY ??
-    fileConfig.claude?.sessionKeys ??
+    providerConfig.sessionKeys ??
     "";
 
   return {
@@ -27,8 +28,8 @@ export function loadClaudeConfig({ projectRoot, env = process.env, overrides = {
       env.CLAUDE_BROWSER_PATH ??
       fileConfig.browser?.path ??
       "",
-    model: overrides.model ?? env.CLAUDE_MODEL ?? fileConfig.claude?.model ?? DEFAULT_MODEL,
-    effort: overrides.effort ?? env.CLAUDE_EFFORT ?? fileConfig.claude?.effort ?? DEFAULT_EFFORT,
+    model: overrides.model ?? env.CLAUDE_MODEL ?? providerConfig.model ?? DEFAULT_MODEL,
+    effort: overrides.effort ?? env.CLAUDE_EFFORT ?? providerConfig.effort ?? DEFAULT_EFFORT,
     headless: toBoolean(
       overrides.headless ?? env.CLAUDE_HEADLESS ?? fileConfig.browser?.headless,
       defaultHeadless(env),

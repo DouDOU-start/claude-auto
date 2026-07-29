@@ -1,15 +1,15 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export function resolveProxyUrl({ requestedProxy = "", projectRoot }) {
+export function resolveProxyUrl({ requestedProxy = "", projectRoot, env = process.env }) {
   const configuredProxy = readAppConfig(projectRoot).proxy?.url || "";
-  const proxyUrl = requestedProxy || process.env.CLAUDE_PROXY_URL || configuredProxy;
+  const proxyUrl = requestedProxy || env.APP_PROXY_URL || env.CLAUDE_PROXY_URL || configuredProxy;
   if (!proxyUrl) {
     throw new Error(
       [
         "没有配置上游代理。",
         "请传入 --proxy <代理地址>，",
-        "设置 CLAUDE_PROXY_URL，",
+        "设置 APP_PROXY_URL（或兼容变量 CLAUDE_PROXY_URL），",
         `或创建 ${join(projectRoot, "config", "app.local.json")}。`,
       ].join(" "),
     );

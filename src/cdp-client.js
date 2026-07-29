@@ -1,12 +1,20 @@
-export async function findClaudePage(debugPort) {
+export async function findPage(debugPort, { urlIncludes = "" } = {}) {
   const targets = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
   const page =
-    targets.find((target) => target.type === "page" && String(target.url || "").includes("claude.ai")) ||
+    (urlIncludes
+      ? targets.find(
+          (target) => target.type === "page" && String(target.url || "").includes(urlIncludes),
+        )
+      : null) ||
     targets.find((target) => target.type === "page");
   if (!page?.webSocketDebuggerUrl) {
     throw new Error(`DevTools 端口 ${debugPort} 上没有可用的页面目标。`);
   }
   return page;
+}
+
+export function findClaudePage(debugPort) {
+  return findPage(debugPort, { urlIncludes: "claude.ai" });
 }
 
 export class CdpClient {
@@ -21,6 +29,9 @@ export class CdpClient {
   async connect() {
     this.ws = new WebSocket(this.wsUrl);
     this.ws.addEventListener("message", (message) => this.#onMessage(message));
+    this.ws.addEventListener("close", () => {
+      this.#rejectPending(new Error("CDP 连接已关闭。"));
+    });
     await new Promise((resolve, reject) => {
       this.ws.addEventListener("open", resolve, { once: true });
       this.ws.addEventListener("error", reject, { once: true });
@@ -29,7 +40,8 @@ export class CdpClient {
     await this.send("Runtime.enable");
   }
 
-  close() {
+  close(reason = new Error("CDP 连接已关闭。")) {
+    this.#rejectPending(reason);
     this.ws?.close();
   }
 
@@ -54,11 +66,25 @@ export class CdpClient {
     return result.result?.value;
   }
 
-  interestingAuthRequests() {
+  interestingRequests(matcher) {
     return [...this.requests.values()].filter((item) => {
       const url = item.request?.url || item.response?.url || "";
-      return /send_magic_link|login_methods|auth/i.test(url);
+      if (typeof matcher === "function") return matcher(item, url);
+      if (matcher instanceof RegExp) {
+        matcher.lastIndex = 0;
+        return matcher.test(url);
+      }
+      return matcher ? url.includes(String(matcher)) : true;
     });
+  }
+
+  interestingAuthRequests() {
+    return this.interestingRequests(/send_magic_link|login_methods|auth/i);
+  }
+
+  #rejectPending(error) {
+    for (const pending of this.pending.values()) pending.reject(error);
+    this.pending.clear();
   }
 
   #onMessage(message) {

@@ -6,18 +6,18 @@
   "type": "module",
   "description": "基于 Chrome DevTools Protocol 的 Claude 浏览器自动化、聊天和兼容 API 工具。",
   "scripts": {
-    "interactive": "node src/interactive-register.js",
-    "auto-register-mail": "node src/auto-register-mail.js",
+    "interactive": "node src/commands/register.js",
+    "auto-register-mail": "node src/commands/register-batch.js",
     "open-session": "node src/open-with-session.js",
     "open-browser": "node src/open-browser.js",
     "chat": "node src/commands/chat.js",
     "api": "node src/commands/api-server.js",
     "mail-token": "node src/mail-token.js",
-    "send": "node src/send-email.js",
+    "send": "node src/commands/send-verification.js",
     "install-browser": "node src/install-browser.js",
     "test": "node --test",
     "check": "node src/check-project.js",
-    "help": "node src/send-email.js --help"
+    "help": "node src/commands/register.js --help"
   },
   "engines": {
     "node": ">=22"

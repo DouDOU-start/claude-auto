@@ -4,7 +4,8 @@ import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { resolveBrowserPath } from "../browser-utils.js";
 import { parseProxyUrl, startProxyBridge } from "../proxy-bridge.js";
-import { CdpClient, findClaudePage } from "../cdp-client.js";
+import { CdpClient, findPage } from "../cdp-client.js";
+import { throwIfAborted } from "./abort.js";
 
 const DEFAULT_CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 
@@ -20,9 +21,12 @@ export async function openBrowserRuntime({
   debugPort = 0,
   bridgePort = 0,
   startUrl = "https://claude.ai/",
+  pageUrlIncludes = "",
   headless = false,
   profilePrefix = "runtime",
   keepProfile = false,
+  devtoolsTimeout = 30000,
+  signal,
 }) {
   const executable = resolveBrowserPath({
     requestedPath: chromePath,
@@ -59,8 +63,10 @@ export async function openBrowserRuntime({
       url: startUrl,
       headless,
     });
-    await waitForDevTools(actualDebugPort, 30000);
-    const page = await findClaudePage(actualDebugPort);
+    await waitForDevTools(actualDebugPort, Number(devtoolsTimeout), signal);
+    const page = await findPage(actualDebugPort, {
+      urlIncludes: pageUrlIncludes || pageUrlHint(startUrl),
+    });
     cdp = new CdpClient(page.webSocketDebuggerUrl);
     await cdp.connect();
     await cdp.send("Page.enable");
@@ -146,15 +152,17 @@ async function writeFileIfMissing(path, content) {
   }
 }
 
-export async function waitForDevTools(port, timeoutMs) {
+export async function waitForDevTools(port, timeoutMs, signal) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    throwIfAborted(signal);
     try {
       const response = await fetch(`http://127.0.0.1:${port}/json/version`);
       if (response.ok) return;
     } catch {}
     await wait(300);
   }
+  throwIfAborted(signal);
   throw new Error(`DevTools 端口未能按时启动：${port}`);
 }
 
@@ -203,4 +211,28 @@ export function timestamp() {
 
 export function randomPortHint() {
   return 40000 + Math.floor(Math.random() * 20000);
+}
+
+export function waitForBrowserStop(chrome) {
+  if (!chrome || chrome.exitCode !== null) return Promise.resolve();
+  return new Promise((resolveStop) => {
+    const done = () => {
+      chrome.off("exit", done);
+      process.off("SIGINT", done);
+      process.off("SIGTERM", done);
+      resolveStop();
+    };
+    chrome.once("exit", done);
+    process.once("SIGINT", done);
+    process.once("SIGTERM", done);
+  });
+}
+
+function pageUrlHint(startUrl) {
+  try {
+    const parsed = new URL(startUrl);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.hostname : "";
+  } catch {
+    return "";
+  }
 }

@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { parseArgs } from "./core/cli.js";
-import { openBrowserRuntime, wait } from "./core/browser-runtime.js";
+import { openBrowserRuntime, wait, waitForBrowserStop } from "./core/browser-runtime.js";
 import { resolveProxyUrl } from "./config.js";
 
 main().catch((error) => {
@@ -57,7 +57,7 @@ async function main() {
 
     if (!args.noKeepOpen) {
       console.log("手动关闭 Chrome，或按 Ctrl+C 结束浏览器和代理桥。");
-      await waitForStop(runtime.chrome);
+      await waitForBrowserStop(runtime.chrome);
     }
   } finally {
     await runtime.close();
@@ -77,15 +77,6 @@ async function setClaudeCookie(cdp, name, value, httpOnly) {
     url: "https://claude.ai/",
   });
   if (!result.success) throw new Error(`无法写入 Cookie：${name}`);
-}
-
-function waitForStop(chrome) {
-  return new Promise((resolveStop) => {
-    const done = () => resolveStop();
-    chrome.once("exit", done);
-    process.once("SIGINT", done);
-    process.once("SIGTERM", done);
-  });
 }
 
 function printHelp() {

@@ -1,9 +1,9 @@
-import { CdpClient, findClaudePage } from "./cdp-client.js";
+import { CdpClient, findClaudePage } from "../../cdp-client.js";
 
 const debugPort = Number(process.argv[2]);
 const url = process.argv[3];
 if (!debugPort || !url) {
-  throw new Error("用法：node src/navigate-current.js <DevTools端口> <地址>");
+  throw new Error("用法：node src/tools/claude/navigate-current.js <DevTools端口> <地址>");
 }
 
 const page = await findClaudePage(debugPort);

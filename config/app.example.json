@@ -6,12 +6,14 @@
     "path": "",
     "headless": false
   },
-  "claude": {
-    "sessionKeys": [
-      "REPLACE_WITH_SESSION_KEY"
-    ],
-    "model": "claude-sonnet-5",
-    "effort": "medium"
+  "providers": {
+    "claude": {
+      "sessionKeys": [
+        "REPLACE_WITH_SESSION_KEY"
+      ],
+      "model": "claude-sonnet-5",
+      "effort": "medium"
+    }
   },
   "api": {
     "host": "127.0.0.1",
