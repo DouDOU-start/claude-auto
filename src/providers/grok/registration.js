@@ -59,8 +59,8 @@ export const grokRegistrationProvider = Object.freeze({
     return completeGrokEmailVerification(cdp, value, signal);
   },
 
-  completeOnboarding(cdp, { profile, signal }) {
-    return completeGrokOnboarding(cdp, { ...profile, signal });
+  completeOnboarding(cdp, { profile, signal, updateProgress }) {
+    return completeGrokOnboarding(cdp, { ...profile, signal, updateProgress });
   },
 
   extractSession(cdp) {

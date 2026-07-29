@@ -116,7 +116,11 @@ export async function runRegistration({
     await completeVerification(provider, runtime.cdp, verification, { email, profile, signal });
 
     report(6, "正在完成新用户引导……");
-    await provider.completeOnboarding(runtime.cdp, { profile, signal });
+    await provider.completeOnboarding(runtime.cdp, {
+      profile,
+      signal,
+      updateProgress: (message) => report(6, message),
+    });
 
     report(7, "正在读取登录会话……");
     const session = await provider.extractSession(runtime.cdp, { signal });

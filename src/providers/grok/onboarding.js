@@ -5,6 +5,7 @@ export async function completeGrokOnboarding(cdp, {
   familyName,
   password,
   signal,
+  updateProgress = () => {},
 }) {
   await fillInput(cdp, 'input[data-testid="givenName"]', givenName);
   await fillInput(cdp, 'input[data-testid="familyName"]', familyName);
@@ -12,8 +13,12 @@ export async function completeGrokOnboarding(cdp, {
   const beforeSubmit = await submissionState(cdp);
   await submitCompleteSignUp(cdp);
   if (!beforeSubmit.turnstileReady) {
+    updateProgress("正在等待 Grok Turnstile 验证……");
     const turnstileState = await waitForTurnstile(cdp, signal);
-    if (!turnstileState.navigated) await submitCompleteSignUp(cdp);
+    if (!turnstileState.navigated) {
+      updateProgress("Turnstile 验证已完成，正在提交注册资料……");
+      await submitCompleteSignUp(cdp);
+    }
   }
 
   const deadline = Date.now() + 120000;
