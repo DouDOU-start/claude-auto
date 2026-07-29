@@ -21,7 +21,7 @@ export function resolveRandomEmailDomain({
   requestedDomain = "",
   projectRoot,
   env = process.env,
-  defaultDomain = "k9ray.com",
+  defaultDomain = "example.com",
 }) {
   const configuredDomain = readAppConfig(projectRoot).mail?.randomDomain || "";
   const domain =

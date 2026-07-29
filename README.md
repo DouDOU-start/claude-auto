@@ -77,7 +77,7 @@ Copy-Item .\config\app.example.json .\config\app.local.json
     "headless": false
   },
   "mail": {
-    "randomDomain": "k9ray.com"
+    "randomDomain": "example.com"
   },
   "providers": {
     "claude": {
@@ -111,7 +111,7 @@ $env:APP_RANDOM_EMAIL_DOMAIN = "mail.example.com"
 命令行参数 > 通用环境变量 > 兼容环境变量 > config/app.local.json
 ```
 
-`mail.randomDomain` 是未传入 `--email` 时使用的随机邮箱后缀。可以填写 `mail.example.com` 或 `@mail.example.com`；程序会自动去掉开头的 `@`。如果没有任何配置，则回退使用 `k9ray.com`。
+`mail.randomDomain` 是未传入 `--email` 时使用的随机邮箱后缀。可以填写 `mail.example.com` 或 `@mail.example.com`；程序会自动去掉开头的 `@`。如果没有任何配置，则回退使用 `example.com`。
 
 代理链路：
 
@@ -232,7 +232,7 @@ npm run interactive
 指定邮箱和姓名：
 
 ```powershell
-npm run interactive -- --email test-demo@k9ray.com --name "Alex Morgan"
+npm run interactive -- --email test-demo@example.com --name "Alex Morgan"
 ```
 
 指定生日：
@@ -272,7 +272,7 @@ npm run interactive -- --provider grok --email user@example.com --no-proxy
 ## 发送邮箱验证信息
 
 ```powershell
-npm run send -- --email test-demo@k9ray.com
+npm run send -- --email test-demo@example.com
 ```
 
 使用配置文件中的随机邮箱后缀：
@@ -284,7 +284,7 @@ npm run send
 临时覆盖随机邮箱后缀：
 
 ```powershell
-npm run send -- --domain k9ray.com
+npm run send -- --domain example.com
 ```
 
 发送 Grok 邮箱安全码并保留浏览器：
@@ -420,7 +420,7 @@ Grok 的完整结果中包含随机生成或命令行指定的密码，以及 `s
 
 ```json
 {
-  "email": "test-demo@k9ray.com",
+  "email": "test-demo@example.com",
   "name": "Alex Morgan",
   "birthday": "01/01/1995",
   "durationText": "1m 32s",

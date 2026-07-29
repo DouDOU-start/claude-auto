@@ -7,7 +7,7 @@
     "headless": false
   },
   "mail": {
-    "randomDomain": "k9ray.com"
+    "randomDomain": "example.com"
   },
   "providers": {
     "claude": {
