@@ -29,6 +29,22 @@ export function resolveRandomEmailDomain({
   return normalizeEmailDomain(domain);
 }
 
+export function resolveRegistrationProviderId({
+  requestedProvider = "",
+  projectRoot,
+  env = process.env,
+  defaultProvider = "claude",
+}) {
+  const configuredProvider = readAppConfig(projectRoot).registration?.provider || "";
+  const provider = String(
+    requestedProvider || env.APP_REGISTRATION_PROVIDER || configuredProvider || defaultProvider,
+  ).trim().toLowerCase();
+  if (!provider || !/^[a-z0-9_-]+$/.test(provider)) {
+    throw new Error(`注册服务名称格式无效：${provider}`);
+  }
+  return provider;
+}
+
 export function maskProxy(proxyUrl) {
   const parsed = new URL(proxyUrl);
   const auth = parsed.username || parsed.password ? "***@" : "";

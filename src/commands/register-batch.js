@@ -4,7 +4,7 @@ import { parseArgs, isCliEntry } from "../core/cli.js";
 import { projectRootFrom } from "../core/browser-runtime.js";
 import { registrationResultSummary, runRegistration } from "../core/registration-runner.js";
 import { waitWithSignal } from "../core/abort.js";
-import { resolveProxyUrl } from "../config.js";
+import { resolveProxyUrl, resolveRegistrationProviderId } from "../config.js";
 import { parseMailAccountLine } from "../mail/account.js";
 import { getRegistrationProvider } from "../providers/index.js";
 
@@ -22,7 +22,9 @@ export async function runRegisterBatchCommand(argv = process.argv.slice(2)) {
   }
 
   const projectRoot = projectRootFrom(import.meta.url);
-  const provider = getRegistrationProvider(args.provider);
+  const provider = getRegistrationProvider(
+    resolveRegistrationProviderId({ requestedProvider: args.provider, projectRoot }),
+  );
   const proxyUrl = args.noProxy ? "" : resolveProxyUrl({ requestedProxy: args.proxy, projectRoot });
   const results = [];
 
@@ -182,7 +184,7 @@ function printHelp() {
   node src/commands/register-batch.js --accounts-file accounts.txt [选项]
 
 选项：
-  --provider <名称>       注册服务适配器，支持 claude、grok。
+  --provider <名称>       注册服务适配器，优先于统一配置。
   --account <账号行>      单个账号：email----password----client_id----refresh_token。
   --accounts-file <路径>  每行一个账号的文件。
   --mail-timeout <毫秒>   邮件轮询超时，默认 180000。

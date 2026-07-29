@@ -4,7 +4,11 @@ import { stdin as input, stdout as output } from "node:process";
 import { parseArgs, isCliEntry } from "../core/cli.js";
 import { projectRootFrom, waitForBrowserStop } from "../core/browser-runtime.js";
 import { registrationResultSummary, runRegistration } from "../core/registration-runner.js";
-import { resolveProxyUrl, resolveRandomEmailDomain } from "../config.js";
+import {
+  resolveProxyUrl,
+  resolveRandomEmailDomain,
+  resolveRegistrationProviderId,
+} from "../config.js";
 import { getRegistrationProvider } from "../providers/index.js";
 import { defaultClaudeBirthday } from "../providers/claude/profile.js";
 
@@ -16,7 +20,9 @@ export async function runRegisterCommand(argv = process.argv.slice(2)) {
   }
 
   const projectRoot = projectRootFrom(import.meta.url);
-  const provider = getRegistrationProvider(args.provider);
+  const provider = getRegistrationProvider(
+    resolveRegistrationProviderId({ requestedProvider: args.provider, projectRoot }),
+  );
   const proxyUrl = args.noProxy ? "" : resolveProxyUrl({ requestedProxy: args.proxy, projectRoot });
   const email =
     args.email ||
@@ -110,7 +116,7 @@ function printHelp() {
   node src/commands/register.js [选项]
 
 选项：
-  --provider <名称>       注册服务适配器，支持 claude、grok。
+  --provider <名称>       注册服务适配器，优先于统一配置。
   --email <邮箱>          注册邮箱，未提供时自动生成随机邮箱。
   --domain <域名>         随机邮箱后缀，优先于统一配置。
   --name <姓名>           显示名称，默认随机英文姓名。

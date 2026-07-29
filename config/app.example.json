@@ -9,6 +9,9 @@
   "mail": {
     "randomDomain": "example.com"
   },
+  "registration": {
+    "provider": "claude"
+  },
   "providers": {
     "claude": {
       "sessionKeys": [

@@ -65,7 +65,7 @@ config/app.local.json
 Copy-Item .\config\app.example.json .\config\app.local.json
 ```
 
-配置分为代理、浏览器、邮箱、服务适配器和 API 五个区域：
+配置分为代理、浏览器、邮箱、注册、服务适配器和 API 六个区域：
 
 ```json
 {
@@ -78,6 +78,9 @@ Copy-Item .\config\app.example.json .\config\app.local.json
   },
   "mail": {
     "randomDomain": "example.com"
+  },
+  "registration": {
+    "provider": "claude"
   },
   "providers": {
     "claude": {
@@ -103,6 +106,7 @@ Copy-Item .\config\app.example.json .\config\app.local.json
 $env:CLAUDE_SESSION_KEY = "sk-ant-sid02-..."
 $env:APP_PROXY_URL = "http://user:password@host:port"
 $env:APP_RANDOM_EMAIL_DOMAIN = "mail.example.com"
+$env:APP_REGISTRATION_PROVIDER = "grok"
 ```
 
 配置优先级：
@@ -112,6 +116,8 @@ $env:APP_RANDOM_EMAIL_DOMAIN = "mail.example.com"
 ```
 
 `mail.randomDomain` 是未传入 `--email` 时使用的随机邮箱后缀。可以填写 `mail.example.com` 或 `@mail.example.com`；程序会自动去掉开头的 `@`。如果没有任何配置，则回退使用 `example.com`。
+
+`registration.provider` 是注册命令默认使用的服务，支持 `claude` 和 `grok`。命令行 `--provider` 可以临时覆盖该配置。
 
 代理链路：
 
@@ -203,7 +209,7 @@ npm run auto-register-mail -- `
 主要参数：
 
 ```text
---provider <name>             注册服务适配器，支持 claude、grok。
+--provider <name>             注册服务适配器，优先于统一配置。
 --account <line>              单个邮箱组账号。
 --accounts-file <path>        批量账号文件。
 --mail-timeout <ms>           邮件轮询超时，默认 180000。
@@ -247,12 +253,28 @@ Grok 交互式注册：
 npm run interactive -- --provider grok --email user@example.com --no-proxy
 ```
 
+如果本地配置已经设置为：
+
+```json
+{
+  "registration": {
+    "provider": "grok"
+  }
+}
+```
+
+则可以省略 `--provider`：
+
+```powershell
+npm run interactive -- --no-proxy
+```
+
 程序发送安全码后，在终端输入邮件中的六位安全码。邮件常见展示格式为 `ABC-123`，输入时保留或省略连字符都可以。
 
 主要参数：
 
 ```text
---provider <name>           注册服务适配器，支持 claude、grok。
+--provider <name>           注册服务适配器，优先于统一配置。
 --email <email>             注册邮箱，未提供时自动生成随机邮箱。
 --domain <domain>           随机邮箱后缀，优先于统一配置。
 --name <name>               显示名称，默认随机英文名。

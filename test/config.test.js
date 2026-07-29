@@ -4,7 +4,11 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadClaudeConfig, splitSessionKeys } from "../src/claude/config.js";
-import { resolveProxyUrl, resolveRandomEmailDomain } from "../src/config.js";
+import {
+  resolveProxyUrl,
+  resolveRandomEmailDomain,
+  resolveRegistrationProviderId,
+} from "../src/config.js";
 
 test("会话密钥支持数组、逗号和换行，并自动去重", () => {
   assert.deepEqual(splitSessionKeys("a, b\na"), ["a", "b"]);
@@ -21,6 +25,7 @@ test("统一 JSON 配置能够加载全部运行参数", async () => {
         proxy: { url: "http://user:pass@example.com:8080" },
         browser: { path: "/browser", headless: false },
         mail: { randomDomain: "mail.example.com" },
+        registration: { provider: "grok" },
         providers: {
           claude: { sessionKeys: ["abc"], model: "model", effort: "high" },
         },
@@ -39,6 +44,7 @@ test("统一 JSON 配置能够加载全部运行参数", async () => {
     assert.equal(config.port, 9000);
     assert.equal(config.apiKey, "key");
     assert.equal(resolveRandomEmailDomain({ projectRoot, env: {} }), "mail.example.com");
+    assert.equal(resolveRegistrationProviderId({ projectRoot, env: {} }), "grok");
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
   }
@@ -117,6 +123,40 @@ test("随机邮箱后缀支持命令行、环境变量和统一配置优先级",
     assert.throws(
       () => resolveRandomEmailDomain({ requestedDomain: "https://invalid.example.com", projectRoot }),
       /不是有效域名/,
+    );
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("注册服务支持命令行、环境变量和统一配置优先级", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "provider-config-test-"));
+  try {
+    await mkdir(join(projectRoot, "config"));
+    await writeFile(
+      join(projectRoot, "config", "app.local.json"),
+      JSON.stringify({ registration: { provider: "grok" } }),
+      "utf8",
+    );
+    assert.equal(resolveRegistrationProviderId({ projectRoot, env: {} }), "grok");
+    assert.equal(
+      resolveRegistrationProviderId({
+        projectRoot,
+        env: { APP_REGISTRATION_PROVIDER: "CLAUDE" },
+      }),
+      "claude",
+    );
+    assert.equal(
+      resolveRegistrationProviderId({
+        requestedProvider: "GROK",
+        projectRoot,
+        env: { APP_REGISTRATION_PROVIDER: "claude" },
+      }),
+      "grok",
+    );
+    assert.throws(
+      () => resolveRegistrationProviderId({ requestedProvider: "grok.com", projectRoot }),
+      /格式无效/,
     );
   } finally {
     await rm(projectRoot, { recursive: true, force: true });

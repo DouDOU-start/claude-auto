@@ -8,7 +8,12 @@ import {
   timestamp,
   waitForBrowserStop,
 } from "../core/browser-runtime.js";
-import { maskProxy, resolveProxyUrl, resolveRandomEmailDomain } from "../config.js";
+import {
+  maskProxy,
+  resolveProxyUrl,
+  resolveRandomEmailDomain,
+  resolveRegistrationProviderId,
+} from "../config.js";
 import { getRegistrationProvider } from "../providers/index.js";
 
 export async function runSendVerificationCommand(argv = process.argv.slice(2)) {
@@ -19,7 +24,9 @@ export async function runSendVerificationCommand(argv = process.argv.slice(2)) {
   }
 
   const projectRoot = projectRootFrom(import.meta.url);
-  const provider = getRegistrationProvider(args.provider);
+  const provider = getRegistrationProvider(
+    resolveRegistrationProviderId({ requestedProvider: args.provider, projectRoot }),
+  );
   const proxyUrl = args.noProxy ? "" : resolveProxyUrl({ requestedProxy: args.proxy, projectRoot });
   const email =
     args.email ||
@@ -103,7 +110,7 @@ function printHelp() {
   node src/commands/send-verification.js [选项]
 
 选项：
-  --provider <名称>      注册服务适配器，支持 claude、grok。
+  --provider <名称>      注册服务适配器，优先于统一配置。
   --email <邮箱>         接收邮箱验证信息的邮箱，默认随机生成。
   --domain <域名>        随机邮箱后缀，优先于统一配置。
   --proxy <代理地址>     上游认证代理，优先于 config/app.local.json。
