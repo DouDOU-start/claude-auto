@@ -9,7 +9,7 @@ export async function completeGrokOnboarding(cdp, {
   await fillInput(cdp, 'input[data-testid="givenName"]', givenName);
   await fillInput(cdp, 'input[data-testid="familyName"]', familyName);
   await fillInput(cdp, 'input[data-testid="password"]', password);
-  await clickCompleteSignUp(cdp);
+  await submitCompleteSignUp(cdp);
 
   const deadline = Date.now() + 120000;
   let state = null;
@@ -56,32 +56,27 @@ async function fillInput(cdp, selector, value) {
   await cdp.send("Input.insertText", { text: String(value) });
 }
 
-async function clickCompleteSignUp(cdp) {
-  const point = await cdp.evaluate(`
+async function submitCompleteSignUp(cdp) {
+  const result = await cdp.evaluate(`
     (() => {
       const button = [...document.querySelectorAll("button")]
         .find((item) => /Complete sign up/i.test(item.textContent || "") && !item.disabled);
-      if (!button) return null;
+      if (!button) return { ok: false, reason: "未找到完成注册按钮" };
+      const form = button.closest("form");
+      if (!form) return { ok: false, reason: "完成注册按钮不在表单中" };
+      if (!form.checkValidity()) {
+        return { ok: false, reason: "注册资料未通过浏览器表单校验" };
+      }
       button.scrollIntoView({ block: "center", inline: "center" });
-      const rect = button.getBoundingClientRect();
-      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit(button);
+        return { ok: true, mode: "requestSubmit" };
+      }
+      button.click();
+      return { ok: true, mode: "click" };
     })()
   `);
-  if (!point) throw new Error("未找到 Grok 完成注册按钮。");
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mousePressed",
-    x: point.x,
-    y: point.y,
-    button: "left",
-    clickCount: 1,
-  });
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mouseReleased",
-    x: point.x,
-    y: point.y,
-    button: "left",
-    clickCount: 1,
-  });
+  if (!result?.ok) throw new Error(`未能提交 Grok 注册资料：${result?.reason || "未知原因"}`);
 }
 
 async function onboardingState(cdp) {
