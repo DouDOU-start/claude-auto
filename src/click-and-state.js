@@ -3,7 +3,7 @@ import { CdpClient, findClaudePage } from "./cdp-client.js";
 const debugPort = Number(process.argv[2]);
 const text = process.argv[3];
 if (!debugPort || !text) {
-  throw new Error("usage: node src/click-and-state.js <debugPort> <button-text>");
+  throw new Error("用法：node src/click-and-state.js <DevTools端口> <按钮文字>");
 }
 
 const page = await findClaudePage(debugPort);
@@ -15,7 +15,7 @@ try {
       const wanted = ${JSON.stringify(text)}.toLowerCase();
       const button = [...document.querySelectorAll("button")]
         .find((el) => (el.textContent || "").toLowerCase().includes(wanted));
-      if (!button) return { clicked: false, reason: "button not found" };
+      if (!button) return { clicked: false, reason: "未找到按钮" };
       button.click();
       return { clicked: true, text: button.textContent?.trim() };
     })()

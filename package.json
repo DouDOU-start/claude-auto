@@ -4,14 +4,19 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "Automate Claude email magic-link request through a fresh proxied Chrome profile.",
+  "description": "基于 Chrome DevTools Protocol 的 Claude 浏览器自动化、聊天和兼容 API 工具。",
   "scripts": {
     "interactive": "node src/interactive-register.js",
     "auto-register-mail": "node src/auto-register-mail.js",
     "open-session": "node src/open-with-session.js",
+    "open-browser": "node src/open-browser.js",
+    "chat": "node src/commands/chat.js",
+    "api": "node src/commands/api-server.js",
     "mail-token": "node src/mail-token.js",
     "send": "node src/send-email.js",
     "install-browser": "node src/install-browser.js",
+    "test": "node --test",
+    "check": "node src/check-project.js",
     "help": "node src/send-email.js --help"
   },
   "engines": {

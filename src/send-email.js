@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -6,11 +5,20 @@ import { startProxyBridge, parseProxyUrl } from "./proxy-bridge.js";
 import { CdpClient, findClaudePage } from "./cdp-client.js";
 import { resolveBrowserPath } from "./browser-utils.js";
 import { maskProxy, resolveProxyUrl } from "./config.js";
+import {
+  launchChrome,
+  randomPortHint,
+  stopChrome,
+  timestamp,
+  wait,
+  waitForDevTools,
+  writeBrowserProfile,
+} from "./core/browser-runtime.js";
 
 const DEFAULT_CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 
 main().catch((error) => {
-  console.error(`ERROR: ${error.message}`);
+  console.error(`错误：${error.message}`);
   process.exit(1);
 });
 
@@ -41,7 +49,7 @@ async function main() {
   await mkdir(profileDir, { recursive: true });
   await mkdir(join(profileDir, "Default"), { recursive: true });
   await mkdir(logDir, { recursive: true });
-  await writeEnglishProfile(profileDir);
+  await writeBrowserProfile(profileDir);
 
   const bridge = await startProxyBridge({
     listenHost: "127.0.0.1",
@@ -54,6 +62,7 @@ async function main() {
     profileDir,
     proxyServer: `http://${bridge.host}:${bridge.port}`,
     debugPort,
+    url: "https://claude.ai/login",
   });
 
   try {
@@ -105,10 +114,10 @@ async function main() {
     }
   } finally {
     if (!keepOpen) {
-      chrome.kill();
+      await stopChrome(chrome);
       await bridge.close();
     } else {
-      console.log("Chrome and proxy bridge are kept running. Close Chrome manually when finished.");
+      console.log("Chrome 和代理桥将继续运行，完成后请手动关闭 Chrome。");
     }
   }
 }
@@ -172,18 +181,18 @@ async function waitForLoginReady(cdp, timeoutMs) {
         return lastState;
       }
     } catch {
-      // The page can replace its execution context while Cloudflare/Claude loads.
+      // Cloudflare 或 Claude 加载期间可能替换页面执行上下文。
     }
     await wait(500);
   }
-  throw new Error(`Claude login page was not ready before timeout. Last state: ${JSON.stringify(lastState)}`);
+  throw new Error(`Claude 登录页未能在超时前就绪。最终状态：${JSON.stringify(lastState)}`);
 }
 
 async function syncVisibleEmailInput(cdp, email) {
   return cdp.evaluate(`
     (() => {
       const input = document.querySelector('input#email, input[type="email"], input[data-testid="email"]');
-      if (!input) return { ok: false, reason: "email input not found" };
+      if (!input) return { ok: false, reason: "未找到邮箱输入框" };
       input.scrollIntoView({ block: "center", inline: "center" });
       input.focus();
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
@@ -199,55 +208,6 @@ async function syncVisibleEmailInput(cdp, email) {
       };
     })()
   `);
-}
-
-function launchChrome({ chromePath, profileDir, proxyServer, debugPort }) {
-  const args = [
-    `--user-data-dir=${profileDir}`,
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--disable-sync",
-    "--disable-save-password-bubble",
-    "--lang=en-US",
-    "--accept-lang=en-US,en",
-    "--timezone=America/New_York",
-    "--new-window",
-    `--proxy-server=${proxyServer}`,
-    `--remote-debugging-port=${debugPort}`,
-    "--remote-debugging-address=127.0.0.1",
-    "--remote-allow-origins=*",
-    "https://claude.ai/login",
-  ];
-  return spawn(chromePath, args, { detached: true, stdio: "ignore" });
-}
-
-async function writeEnglishProfile(profileDir) {
-  const prefs = {
-    autofill: { credit_card_enabled: false, profile_enabled: false },
-    credentials_enable_service: false,
-    intl: { accept_languages: "en-US,en" },
-    payments: { can_make_payment_enabled: false },
-    profile: { password_manager_enabled: false },
-    webkit: { webprefs: { default_encoding: "UTF-8" } },
-  };
-  const localState = {
-    intl: { app_locale: "en-US" },
-    browser: { enabled_labs_experiments: [] },
-  };
-  await writeFile(join(profileDir, "Default", "Preferences"), JSON.stringify(prefs, null, 2), "utf8");
-  await writeFile(join(profileDir, "Local State"), JSON.stringify(localState, null, 2), "utf8");
-}
-
-async function waitForDevTools(port, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/json/version`);
-      if (response.ok) return;
-    } catch {}
-    await wait(300);
-  }
-  throw new Error(`DevTools port did not open: ${port}`);
 }
 
 function parseArgs(argv) {
@@ -272,36 +232,24 @@ function parseArgs(argv) {
 
 function printHelp() {
   console.log(`
-Usage:
-  node src/send-email.js [options]
+用法：
+  node src/send-email.js [选项]
 
-Options:
-  --email <email>          Email to send magic link to. Default: random @k9ray.com.
-  --domain <domain>        Random email domain when --email is omitted. Default: k9ray.com.
-  --proxy <proxy-url>      Upstream auth proxy. Overrides config/proxy.json.
-  --chrome <path>          Chrome/Chromium executable path. Default: bundled Chromium.
-  --bridge-port <port>     Local no-auth proxy bridge port. Default: random.
-  --debug-port <port>      Chrome DevTools port. Default: random high port.
-  --profile-dir <path>     Chrome profile directory. Default: ./profiles/claude-...
-  --log-dir <path>         Result JSON directory. Default: ./logs.
-  --no-keep-open           Close Chrome and proxy bridge after sending.
-  --help                   Show this help.
+选项：
+  --email <邮箱>         接收 Magic Link 的邮箱，默认随机生成。
+  --domain <域名>        随机邮箱域名，默认 k9ray.com。
+  --proxy <代理地址>     上游认证代理，优先于 config/proxy.json。
+  --chrome <路径>        Chrome 或 Chromium 可执行文件。
+  --bridge-port <端口>   本地代理桥端口，默认随机。
+  --debug-port <端口>    Chrome DevTools 端口，默认随机。
+  --profile-dir <路径>   Chrome 用户目录。
+  --log-dir <路径>       结果目录，默认 ./logs。
+  --no-keep-open         发送完成后关闭 Chrome 和代理桥。
+  --help                 显示帮助。
 
-Example:
+示例：
   node src/send-email.js --email test-demo@k9ray.com
 `);
-}
-
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function timestamp() {
-  return new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
-}
-
-function randomPortHint() {
-  return 40000 + Math.floor(Math.random() * 20000);
 }
 
 function parseSent(responseText) {

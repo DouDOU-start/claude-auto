@@ -5,14 +5,18 @@ const BUFFER_TIMEOUT_MS = 30000;
 
 export function startProxyBridge({ listenHost = "127.0.0.1", listenPort = 0, upstream }) {
   if (!upstream?.host || !upstream?.port || !upstream?.username || !upstream?.password) {
-    throw new Error("Proxy bridge requires upstream host, port, username, and password.");
+    throw new Error("代理桥需要上游主机、端口、用户名和密码。");
   }
 
   const auth = Buffer.from(`${upstream.username}:${upstream.password}`, "utf8").toString("base64");
   const authHeader = `Proxy-Authorization: Basic ${auth}\r\n`;
+  const sockets = new Set();
+  let closed = false;
   const server = net.createServer((client) => {
+    sockets.add(client);
+    client.once("close", () => sockets.delete(client));
     client.setTimeout(BUFFER_TIMEOUT_MS);
-    handleClient(client, upstream, authHeader).catch(() => client.destroy());
+    handleClient(client, upstream, authHeader, sockets).catch(() => client.destroy());
   });
 
   return new Promise((resolve, reject) => {
@@ -24,13 +28,25 @@ export function startProxyBridge({ listenHost = "127.0.0.1", listenPort = 0, ups
         server,
         host: listenHost,
         port: typeof address === "object" && address ? address.port : listenPort,
-        close: () => new Promise((done) => server.close(done)),
+        close: () => {
+          if (closed) return Promise.resolve();
+          closed = true;
+          for (const socket of sockets) socket.destroy();
+          return new Promise((done) => {
+            const timer = setTimeout(done, 1000);
+            timer.unref?.();
+            server.close(() => {
+              clearTimeout(timer);
+              done();
+            });
+          });
+        },
       });
     });
   });
 }
 
-async function handleClient(client, upstream, authHeader) {
+async function handleClient(client, upstream, authHeader, sockets) {
   const initial = await readHeaders(client);
   if (!initial) return;
 
@@ -42,6 +58,8 @@ async function handleClient(client, upstream, authHeader) {
   if (!method || !target || !version) return;
 
   const remote = net.connect({ host: upstream.host, port: upstream.port });
+  sockets.add(remote);
+  remote.once("close", () => sockets.delete(remote));
   await onceConnect(remote);
   remote.setTimeout(BUFFER_TIMEOUT_MS);
 

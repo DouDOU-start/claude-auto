@@ -6,7 +6,7 @@ export function resolveBrowserPath({ requestedPath = "", projectRoot, fallbackPa
   const explicitPath = requestedPath || process.env.CLAUDE_BROWSER_PATH || "";
   if (explicitPath) {
     if (existsSync(explicitPath)) return explicitPath;
-    throw new Error(`Configured browser executable does not exist: ${explicitPath}`);
+    throw new Error(`配置的浏览器可执行文件不存在：${explicitPath}`);
   }
 
   const projectBrowser = firstExisting(projectBrowserCandidates(projectRoot));
@@ -18,21 +18,21 @@ export function resolveBrowserPath({ requestedPath = "", projectRoot, fallbackPa
       return installProjectBrowser(projectRoot);
     } catch (error) {
       installError = error;
-      console.warn(`[browser] Automatic Chromium download failed: ${error.message}`);
+      console.warn(`[浏览器] Chromium 自动下载失败：${error.message}`);
     }
   }
 
   const fallbackBrowser = firstExisting([...playwrightBrowserCandidates(), fallbackPath].filter(Boolean));
   if (fallbackBrowser) return fallbackBrowser;
 
-  const installHint = installError ? ` Last install error: ${installError.message}.` : "";
+  const installHint = installError ? `最近一次安装错误：${installError.message}。` : "";
   throw new Error(
     [
-      "No browser executable found.",
-      "The script can automatically download Chromium into ./browsers on first run.",
-      "Run `npm run install-browser` to install it manually,",
-      "pass --chrome <path>,",
-      "or set CLAUDE_BROWSER_PATH.",
+      "未找到浏览器可执行文件。",
+      "脚本首次运行时可以自动将 Chromium 下载到 ./browsers。",
+      "可执行 `npm run install-browser` 手动安装，",
+      "也可以传入 --chrome <路径>，",
+      "或设置 CLAUDE_BROWSER_PATH。",
       installHint,
     ].join(" "),
   );
@@ -40,7 +40,7 @@ export function resolveBrowserPath({ requestedPath = "", projectRoot, fallbackPa
 
 export function installProjectBrowser(projectRoot) {
   const browsersDir = join(projectRoot, "browsers");
-  console.log(`[browser] Chromium not found in project browsers. Downloading to ${browsersDir} ...`);
+  console.log(`[浏览器] 项目中未找到 Chromium，正在下载到 ${browsersDir}……`);
 
   const result = spawnSync(...installCommand(), {
     cwd: projectRoot,
@@ -55,15 +55,15 @@ export function installProjectBrowser(projectRoot) {
     throw new Error(result.error.message);
   }
   if (result.status !== 0) {
-    throw new Error(`playwright install chromium exited with code ${result.status}`);
+    throw new Error(`playwright install chromium 退出码为 ${result.status}`);
   }
 
   const installedBrowser = firstExisting(projectBrowserCandidates(projectRoot));
   if (!installedBrowser) {
-    throw new Error("Chromium download finished, but no browser executable was found in ./browsers.");
+    throw new Error("Chromium 下载完成，但 ./browsers 中没有找到浏览器可执行文件。");
   }
 
-  console.log(`[browser] Chromium ready: ${installedBrowser}`);
+  console.log(`[浏览器] Chromium 已就绪：${installedBrowser}`);
   return installedBrowser;
 }
 

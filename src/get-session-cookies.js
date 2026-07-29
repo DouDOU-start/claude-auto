@@ -2,7 +2,7 @@ import { CdpClient, findClaudePage } from "./cdp-client.js";
 
 const debugPort = Number(process.argv[2]);
 if (!debugPort) {
-  throw new Error("usage: node src/get-session-cookies.js <debugPort>");
+  throw new Error("用法：node src/get-session-cookies.js <DevTools端口>");
 }
 
 const page = await findClaudePage(debugPort);

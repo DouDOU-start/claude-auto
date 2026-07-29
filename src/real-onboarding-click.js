@@ -2,7 +2,7 @@ import { CdpClient, findClaudePage } from "./cdp-client.js";
 
 const debugPort = Number(process.argv[2]);
 if (!debugPort) {
-  throw new Error("usage: node src/real-onboarding-click.js <debugPort>");
+  throw new Error("用法：node src/real-onboarding-click.js <DevTools端口>");
 }
 
 const page = await findClaudePage(debugPort);
@@ -19,7 +19,7 @@ try {
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, checked: input.checked };
     })()
   `);
-  if (!checkboxPoint) throw new Error("terms checkbox not found");
+  if (!checkboxPoint) throw new Error("未找到条款复选框");
   if (!checkboxPoint.checked) {
     await click(cdp, checkboxPoint.x, checkboxPoint.y);
     await wait(800);
@@ -40,8 +40,8 @@ try {
       };
     })()
   `);
-  if (!buttonPoint) throw new Error("Create account button not found");
-  if (buttonPoint.disabled) throw new Error("Create account button is disabled");
+  if (!buttonPoint) throw new Error("未找到创建账号按钮");
+  if (buttonPoint.disabled) throw new Error("创建账号按钮不可用");
   await click(cdp, buttonPoint.x, buttonPoint.y);
   await wait(12000);
 

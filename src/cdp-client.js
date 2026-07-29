@@ -4,7 +4,7 @@ export async function findClaudePage(debugPort) {
     targets.find((target) => target.type === "page" && String(target.url || "").includes("claude.ai")) ||
     targets.find((target) => target.type === "page");
   if (!page?.webSocketDebuggerUrl) {
-    throw new Error(`No page target found on DevTools port ${debugPort}.`);
+    throw new Error(`DevTools 端口 ${debugPort} 上没有可用的页面目标。`);
   }
   return page;
 }

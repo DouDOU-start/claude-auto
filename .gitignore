@@ -3,3 +3,8 @@ profiles/
 *.log
 browsers/
 config/proxy.json
+config/claude.local.json
+config/claude.local.yaml
+config/.cookie-cache.json
+coverage/
+.env

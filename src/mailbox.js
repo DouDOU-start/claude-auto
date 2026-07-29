@@ -8,7 +8,7 @@ export function parseMailAccountLine(line) {
   const [email, password, clientId, ...refreshParts] = String(line || "").trim().split("----");
   const refreshToken = refreshParts.join("----");
   if (!email || !password || !clientId || !refreshToken) {
-    throw new Error("Mail account line must use: email----password----client_id----refresh_token");
+    throw new Error("邮箱账号必须使用格式：email----password----client_id----refresh_token");
   }
   return { email, password, clientId, refreshToken };
 }
@@ -38,15 +38,15 @@ export async function pollClaudeMagicLink({
     try {
       const result = await tryReadClaudeMagicLink({ account, since });
       if (result.magicLink) return result;
-      log(`No Claude magic link yet. Mode=${result.mode || "unknown"}. Waiting ${intervalMs}ms...`);
+      log(`暂未找到 Claude Magic Link。模式=${result.mode || "未知"}，等待 ${intervalMs} 毫秒……`);
     } catch (error) {
       lastError = error;
-      log(`Mail poll failed: ${error.message}`);
+      log(`邮件轮询失败：${error.message}`);
     }
     await wait(intervalMs);
   }
 
-  throw new Error(`Claude magic link not found before timeout.${lastError ? ` Last error: ${lastError.message}` : ""}`);
+  throw new Error(`超时前未找到 Claude Magic Link。${lastError ? `最后错误：${lastError.message}` : ""}`);
 }
 
 export async function tryReadClaudeMagicLink({ account, since }) {
@@ -101,7 +101,7 @@ async function readGraphMessages(accessToken) {
   if (!response.ok) {
     const code = data.error?.code || response.status;
     const message = data.error?.message || data.raw || response.statusText;
-    throw new Error(`Graph read failed: ${code} - ${message}`);
+    throw new Error(`Graph 读取失败：${code} - ${message}`);
   }
   return data.value || [];
 }
@@ -117,7 +117,7 @@ async function tryReadImapMagicLink({ account, since }) {
     socket = await connectImap();
     const xoauth = Buffer.from(`user=${account.email}\x01auth=Bearer ${token.accessToken}\x01\x01`).toString("base64");
     const auth = await imapCommand(socket, "A1", `AUTHENTICATE XOAUTH2 ${xoauth}`);
-    if (!/A1 OK/i.test(auth)) throw new Error("IMAP XOAUTH2 authentication failed.");
+    if (!/A1 OK/i.test(auth)) throw new Error("IMAP XOAUTH2 认证失败。");
     await imapCommand(socket, "A2", "SELECT INBOX");
     const search = await imapCommand(socket, "A3", "UID SEARCH ALL");
     const uidLine = search.split(/\r?\n/).find((line) => /^\* SEARCH/i.test(line)) || "";

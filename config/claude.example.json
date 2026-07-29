@@ -1,0 +1,12 @@
+{
+  "sessionKeys": [
+    "REPLACE_WITH_SESSION_KEY"
+  ],
+  "proxyUrl": "REPLACE_WITH_AUTHENTICATED_HTTP_PROXY_URL",
+  "model": "claude-sonnet-5",
+  "effort": "medium",
+  "headless": false,
+  "host": "127.0.0.1",
+  "port": 8080,
+  "apiKey": ""
+}

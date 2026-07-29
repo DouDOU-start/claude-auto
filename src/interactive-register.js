@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -8,6 +7,15 @@ import { parseProxyUrl, startProxyBridge } from "./proxy-bridge.js";
 import { CdpClient, findClaudePage } from "./cdp-client.js";
 import { resolveBrowserPath } from "./browser-utils.js";
 import { maskProxy, resolveProxyUrl } from "./config.js";
+import {
+  launchChrome,
+  randomPortHint,
+  stopChrome,
+  timestamp,
+  wait,
+  waitForDevTools,
+  writeBrowserProfile,
+} from "./core/browser-runtime.js";
 
 const DEFAULT_CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const DEFAULT_BIRTHDAY = "01/01/1995";
@@ -41,9 +49,9 @@ const LAST_NAMES = [
 ];
 
 main().catch(async (error) => {
-  console.error(`ERROR: ${error.message}`);
+  console.error(`错误：${error.message}`);
   if (globalThis.__claudeKeepProcessAlive) {
-    console.error("Keeping Chrome and proxy bridge running because manual onboarding is required. Press Ctrl+C to stop.");
+    console.error("当前步骤需要人工处理，Chrome 和代理桥将继续运行；按 Ctrl+C 停止。");
     await new Promise(() => {});
   }
   process.exit(1);
@@ -65,7 +73,7 @@ async function main() {
     fallbackPath: DEFAULT_CHROME,
   });
 
-  const email = args.email || `test-${randomBytes(5).toString("hex")}@${args.domain || "k9ray.com"}`;
+  const email = args.email || `student-${randomBytes(5).toString("hex")}@${args.domain || "k9ray.com"}`;
   const displayName = args.name || randomDisplayName();
   const birthday = args.birthday || DEFAULT_BIRTHDAY;
   const proxyUrl = resolveProxyUrl({ requestedProxy: args.proxy, projectRoot });
@@ -82,37 +90,38 @@ async function main() {
 
   await mkdir(join(profileDir, "Default"), { recursive: true });
   await mkdir(logDir, { recursive: true });
-  await writeEnglishProfile(profileDir);
+  await writeBrowserProfile(profileDir);
 
-  console.log("[1/7] Starting local proxy bridge...");
+  console.log("[1/7] 正在启动本地代理桥……");
   const bridge = await startProxyBridge({
     listenHost: "127.0.0.1",
     listenPort: Number(args.bridgePort || 0),
     upstream,
   });
 
-  console.log("[2/7] Opening fresh Chrome profile...");
+  console.log("[2/7] 正在打开新的 Chrome 用户目录……");
   const chrome = launchChrome({
     chromePath,
     profileDir,
     proxyServer: `http://${bridge.host}:${bridge.port}`,
     debugPort,
+    url: "https://claude.ai/login",
   });
 
   const rl = createInterface({ input, output });
   let cdp;
   try {
-    console.log(`      Profile: ${profileDir}`);
-    console.log(`      DevTools port: ${debugPort}`);
-    console.log(`      Local proxy: http://${bridge.host}:${bridge.port}`);
-    console.log("      Waiting for DevTools...");
+    console.log(`      用户目录：${profileDir}`);
+    console.log(`      DevTools 端口：${debugPort}`);
+    console.log(`      本地代理：http://${bridge.host}:${bridge.port}`);
+    console.log("      正在等待 DevTools……");
     await waitForDevTools(debugPort, Number(args.devtoolsTimeout || 30000));
     cdp = await connectClaudePage(debugPort);
-    console.log("      Waiting for Claude login page...");
+    console.log("      正在等待 Claude 登录页……");
     await waitForLoginReady(cdp, Number(args.loginTimeout || 90000));
-    console.log("      Claude login page is ready.");
+    console.log("      Claude 登录页已就绪。");
 
-    console.log("[3/7] Sending email magic link...");
+    console.log("[3/7] 正在发送邮箱 Magic Link……");
     await syncVisibleEmailInput(cdp, email);
     const sendResult = await sendMagicLink(cdp, email);
     console.log(JSON.stringify({
@@ -122,20 +131,21 @@ async function main() {
       responseText: sendResult.responseText,
     }, null, 2));
 
-    console.log("[4/7] Paste the Claude magic-link URL from email.");
-    const magicUrl = await askNonEmpty(rl, "Magic link URL: ");
+    console.log("[4/7] 请粘贴邮件中的 Claude Magic Link。");
+    const magicUrl = await askNonEmpty(rl, "Magic Link 地址：");
     validateMagicUrl(magicUrl, email);
 
-    console.log("[5/7] Opening magic link in the same browser...");
+    console.log("[5/7] 正在同一浏览器中打开 Magic Link……");
     await navigate(cdp, magicUrl, 10000);
     await dismissCookieBanner(cdp);
     await waitForText(cdp, /Let.s create your account|How are you planning|Plans that grow|Before your first chat|What.s your name|Your first chat/i, 90000);
 
-    console.log("[6/7] Completing onboarding...");
+    console.log("[6/7] 正在完成新用户引导……");
     await completeOnboarding(cdp, { displayName, birthday });
 
-    console.log("[7/7] Reading sessionKey cookie...");
+    console.log("[7/7] 正在读取 sessionKey Cookie……");
     const session = await getSessionCookies(cdp);
+    const orgId = await getOrganizationId(cdp);
     const duration = elapsed(startedAt);
     const result = {
       email,
@@ -151,6 +161,7 @@ async function main() {
       sessionKey: session.sessionKey?.value || "",
       sessionKeyLC: session.sessionKeyLC?.value || "",
       routingHint: session.routingHint?.value || "",
+      orgId,
       cookies: session.interesting,
       completedAt: new Date().toISOString(),
     };
@@ -166,15 +177,16 @@ async function main() {
       durationText: result.durationText,
       sessionKey: result.sessionKey,
       sessionKeyLC: result.sessionKeyLC,
+      orgId: result.orgId,
       profileDir,
       debugPort,
       outputPath,
     }, null, 2));
-    console.log(`Total duration: ${duration.text}`);
+    console.log(`总耗时：${duration.text}`);
     if (keepOpen) {
-      console.log("Chrome and proxy bridge are kept running. Close Chrome manually when finished.");
+      console.log("Chrome 和代理桥将继续运行，完成后请手动关闭 Chrome。");
     } else {
-      console.log("Chrome and proxy bridge closed.");
+      console.log("Chrome 和代理桥已关闭。");
     }
   } catch (error) {
     if (keepOpenOnError && isManualOnboardingError(error)) {
@@ -226,22 +238,22 @@ async function completeOnboarding(cdp, { displayName, birthday }) {
       await clickButtonByText(cdp, /Set up later/i);
     } else if (/Verify your phone number|Enter your phone number/i.test(text)) {
       const details = await diagnosticState(cdp).catch(() => state);
-      throw new Error(`Phone verification required. State: ${JSON.stringify(details)}`);
+      throw new Error(`需要手机验证。页面状态：${JSON.stringify(details)}`);
     } else {
       const details = await diagnosticState(cdp).catch(() => state);
-      throw new Error(`Unknown onboarding step. State: ${JSON.stringify(details)}`);
+      throw new Error(`无法识别的新用户引导步骤。页面状态：${JSON.stringify(details)}`);
     }
     await wait(5000);
   }
   const details = await diagnosticState(cdp).catch(() => null);
-  throw new Error(`Onboarding did not complete within expected steps. State: ${JSON.stringify(details)}`);
+  throw new Error(`新用户引导未能在预期步骤内完成。页面状态：${JSON.stringify(details)}`);
 }
 
 async function clickTermsAndCreate(cdp) {
   const before = await accountCreationTargets(cdp);
   if (!before?.button && !before?.checkbox) {
     const details = await diagnosticState(cdp).catch(() => before);
-    throw new Error(`Terms checkbox or account creation button not found. State: ${JSON.stringify(details)}`);
+    throw new Error(`未找到条款复选框或创建账号按钮。页面状态：${JSON.stringify(details)}`);
   }
 
   if (before.checkbox && !before.checkbox.checked) {
@@ -253,7 +265,7 @@ async function clickTermsAndCreate(cdp) {
   const button = after?.button || before.button;
   if (!button) {
     const details = await diagnosticState(cdp).catch(() => after || before);
-    throw new Error(`Account creation button not found after terms click. State: ${JSON.stringify(details)}`);
+    throw new Error(`勾选条款后仍未找到创建账号按钮。页面状态：${JSON.stringify(details)}`);
   }
   await click(cdp, button.x, button.y);
 }
@@ -349,7 +361,7 @@ async function clickButtonByText(cdp, pattern) {
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, text: button.textContent?.trim() };
     })()
   `);
-  if (!point) throw new Error(`Button not found: ${pattern}`);
+  if (!point) throw new Error(`未找到按钮：${pattern}`);
   await click(cdp, point.x, point.y);
   return point;
 }
@@ -379,7 +391,7 @@ async function fillFirstVisibleInput(cdp, value) {
       return { ok: true, value: input.value };
     })()
   `);
-  if (!result?.ok) throw new Error("Visible input not found.");
+  if (!result?.ok) throw new Error("未找到可见输入框。");
 }
 
 async function fillBirthday(cdp, value) {
@@ -425,7 +437,7 @@ async function fillBirthday(cdp, value) {
       const input =
         inputs.find((el) => /birth|date/i.test([el.name, el.id, el.placeholder, el.getAttribute("aria-label")].join(" "))) ||
         inputs[0];
-      if (!input) return { ok: false, reason: "birthday input not found" };
+      if (!input) return { ok: false, reason: "未找到生日输入框" };
       setValue(input, ${JSON.stringify(value)});
       return {
         ok: true,
@@ -438,7 +450,7 @@ async function fillBirthday(cdp, value) {
       };
     })()
   `);
-  if (!result?.ok) throw new Error(`Birthday input not found. State: ${JSON.stringify(result)}`);
+  if (!result?.ok) throw new Error(`未找到生日输入框。页面状态：${JSON.stringify(result)}`);
 }
 
 async function dismissCookieBanner(cdp) {
@@ -465,7 +477,7 @@ async function waitForLoginReady(cdp, timeoutMs) {
     lastState = await pageState(cdp).catch(() => null);
     const failureReason = navigationFailureReason(lastState);
     if (failureReason) {
-      throw new Error(`Claude login page not ready. ${failureReason}. Last state: ${JSON.stringify(lastState)}`);
+      throw new Error(`Claude 登录页未就绪。${failureReason}。最终状态：${JSON.stringify(lastState)}`);
     }
     if (
       lastState?.href?.includes("claude.ai/login") &&
@@ -476,7 +488,7 @@ async function waitForLoginReady(cdp, timeoutMs) {
     }
     await wait(700);
   }
-  throw new Error(`Claude login page not ready. Last state: ${JSON.stringify(lastState)}`);
+  throw new Error(`Claude 登录页未就绪。最终状态：${JSON.stringify(lastState)}`);
 }
 
 function navigationFailureReason(state) {
@@ -484,11 +496,11 @@ function navigationFailureReason(state) {
   const text = [state.href, state.title, state.text].filter(Boolean).join("\n");
   if (/ERR_TUNNEL_CONNECTION_FAILED/i.test(text)) return "ERR_TUNNEL_CONNECTION_FAILED";
   if (/ERR_PROXY_CONNECTION_FAILED|ERR_NO_SUPPORTED_PROXIES|ERR_PROXY_AUTH_UNSUPPORTED/i.test(text)) {
-    return "Proxy connection failed";
+    return "代理连接失败";
   }
   if (/This site can.t be reached|This page isn.t working/i.test(text) && /ERR_/i.test(text)) {
     const match = text.match(/ERR_[A-Z0-9_]+/i);
-    return match?.[0] || "Browser navigation failed";
+    return match?.[0] || "浏览器导航失败";
   }
   return "";
 }
@@ -501,7 +513,7 @@ async function waitForText(cdp, regex, timeoutMs) {
     if (state?.text && regex.test(state.text)) return state;
     await wait(1000);
   }
-  throw new Error(`Expected page text not found. Last state: ${JSON.stringify(state)}`);
+  throw new Error(`未找到预期页面文字。最终状态：${JSON.stringify(state)}`);
 }
 
 async function pageState(cdp) {
@@ -606,49 +618,15 @@ async function getSessionCookies(cdp) {
   };
 }
 
-async function writeEnglishProfile(profileDir) {
-  const prefs = {
-    autofill: { credit_card_enabled: false, profile_enabled: false },
-    credentials_enable_service: false,
-    intl: { accept_languages: "en-US,en" },
-    payments: { can_make_payment_enabled: false },
-    profile: { password_manager_enabled: false },
-    webkit: { webprefs: { default_encoding: "UTF-8" } },
-  };
-  const localState = { intl: { app_locale: "en-US" }, browser: { enabled_labs_experiments: [] } };
-  await writeFile(join(profileDir, "Default", "Preferences"), JSON.stringify(prefs, null, 2), "utf8");
-  await writeFile(join(profileDir, "Local State"), JSON.stringify(localState, null, 2), "utf8");
-}
-
-function launchChrome({ chromePath, profileDir, proxyServer, debugPort }) {
-  return spawn(chromePath, [
-    `--user-data-dir=${profileDir}`,
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--disable-sync",
-    "--disable-save-password-bubble",
-    "--lang=en-US",
-    "--accept-lang=en-US,en",
-    "--timezone=America/New_York",
-    "--new-window",
-    `--proxy-server=${proxyServer}`,
-    `--remote-debugging-port=${debugPort}`,
-    "--remote-debugging-address=127.0.0.1",
-    "--remote-allow-origins=*",
-    "https://claude.ai/login",
-  ], { detached: true, stdio: "ignore" });
-}
-
-async function waitForDevTools(port, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/json/version`);
-      if (response.ok) return;
-    } catch {}
-    await wait(300);
-  }
-  throw new Error(`DevTools port did not open: ${port}`);
+async function getOrganizationId(cdp) {
+  try {
+    const responseText = await cdp.evaluate(
+      `fetch("/api/organizations").then((r) => r.text())`,
+    );
+    const parsed = JSON.parse(responseText);
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed[0].uuid || "";
+  } catch {}
+  return "";
 }
 
 async function askNonEmpty(rl, question) {
@@ -661,17 +639,17 @@ async function askNonEmpty(rl, question) {
 function validateMagicUrl(url, email) {
   const parsed = new URL(url);
   if (parsed.hostname !== "claude.ai" || !parsed.pathname.includes("/magic-link")) {
-    throw new Error("URL is not a claude.ai magic-link URL.");
+    throw new Error("该地址不是 claude.ai 的 Magic Link。");
   }
   const encodedEmail = parsed.hash.split(":")[1] || "";
   if (!encodedEmail) return;
   try {
     const decoded = Buffer.from(encodedEmail, "base64").toString("utf8");
     if (decoded.toLowerCase() !== email.toLowerCase()) {
-      throw new Error(`Magic link email mismatch. Expected ${email}, got ${decoded}`);
+      throw new Error(`Magic Link 邮箱不匹配：预期 ${email}，实际 ${decoded}`);
     }
   } catch (error) {
-    if (error.message.includes("mismatch")) throw error;
+    if (error.message.includes("不匹配")) throw error;
   }
 }
 
@@ -696,79 +674,31 @@ function parseArgs(argv) {
 
 function printHelp() {
   console.log(`
-Usage:
-  node src/interactive-register.js [options]
+用法：
+  node src/interactive-register.js [选项]
 
-Options:
-  --email <email>          Email to register. Default: random @k9ray.com.
-  --domain <domain>        Random email domain when --email is omitted. Default: k9ray.com.
-  --name <name>            Display name. Default: random English name.
-  --birthday <MM/DD/YYYY>  Birthdate for onboarding. Default: ${DEFAULT_BIRTHDAY}.
-  --proxy <proxy-url>      Upstream auth proxy. Overrides config/proxy.json.
-  --chrome <path>          Chrome/Chromium executable path. Default: bundled Chromium.
-  --bridge-port <port>     Local no-auth proxy bridge port. Default: random.
-  --debug-port <port>      Chrome DevTools port. Default: random high port.
-  --profile-dir <path>     Chrome profile directory. Default: ./profiles/interactive-...
-  --log-dir <path>         Result JSON directory. Default: ./logs.
-  --keep-open              Keep Chrome and proxy bridge running after completion.
-  --keep-open-on-error     Keep Chrome only when onboarding needs manual action.
-  --help                   Show this help.
+选项：
+  --email <邮箱>           注册邮箱，默认随机生成 @k9ray.com 邮箱。
+  --domain <域名>          随机邮箱域名，默认 k9ray.com。
+  --name <姓名>            显示名称，默认随机英文姓名。
+  --birthday <MM/DD/YYYY>  新用户引导生日，默认 ${DEFAULT_BIRTHDAY}。
+  --proxy <代理地址>       上游认证代理，优先于 config/proxy.json。
+  --chrome <路径>          Chrome 或 Chromium 可执行文件。
+  --bridge-port <端口>     本地代理桥端口，默认随机。
+  --debug-port <端口>      Chrome DevTools 端口，默认随机。
+  --profile-dir <路径>     Chrome 用户目录。
+  --log-dir <路径>         结果目录，默认 ./logs。
+  --keep-open              完成后保留 Chrome 和代理桥。
+  --keep-open-on-error     仅在需要人工处理时保留 Chrome。
+  --help                   显示帮助。
 
-Flow:
-  1. Opens a fresh proxied Chrome profile.
-  2. Sends magic link to the email.
-  3. Prompts you to paste the magic-link URL.
-  4. Completes onboarding automatically.
-  5. Prints sessionKey from cookies.
+流程：
+  1. 打开新的代理 Chrome 用户目录。
+  2. 向邮箱发送 Magic Link。
+  3. 提示粘贴邮件中的 Magic Link。
+  4. 自动完成新用户引导。
+  5. 输出 Cookie 中的 sessionKey。
 `);
-}
-
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function stopChrome(chrome) {
-  if (!chrome?.pid) return;
-  if (process.platform === "win32") {
-    await runIgnore("taskkill", ["/PID", String(chrome.pid), "/T", "/F"], 7000);
-    return;
-  }
-
-  try {
-    process.kill(-chrome.pid, "SIGTERM");
-  } catch {
-    try {
-      chrome.kill();
-    } catch {}
-  }
-  await wait(1000);
-  try {
-    process.kill(-chrome.pid, "SIGKILL");
-  } catch {}
-}
-
-function runIgnore(command, args, timeoutMs) {
-  return new Promise((resolveRun) => {
-    const child = spawn(command, args, { stdio: "ignore" });
-    const timer = setTimeout(() => {
-      child.kill();
-      resolveRun();
-    }, timeoutMs);
-    const done = () => {
-      clearTimeout(timer);
-      resolveRun();
-    };
-    child.once("exit", done);
-    child.once("error", done);
-  });
-}
-
-function timestamp() {
-  return new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
-}
-
-function randomPortHint() {
-  return 40000 + Math.floor(Math.random() * 20000);
 }
 
 function randomDisplayName() {
@@ -779,7 +709,7 @@ function randomDisplayName() {
 
 function parseBirthday(value) {
   const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value);
-  if (!match) throw new Error(`Birthday must use MM/DD/YYYY format: ${value}`);
+  if (!match) throw new Error(`生日必须使用 MM/DD/YYYY 格式：${value}`);
   return {
     month: match[1].padStart(2, "0"),
     day: match[2].padStart(2, "0"),
@@ -800,7 +730,7 @@ function formatDuration(ms) {
   const totalSeconds = Math.round(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+  return minutes > 0 ? `${minutes}分 ${seconds}秒` : `${seconds}秒`;
 }
 
 function parseSent(responseText) {
@@ -812,5 +742,5 @@ function parseSent(responseText) {
 }
 
 function isManualOnboardingError(error) {
-  return /Phone verification required/i.test(error?.message || "");
+  return /需要手机验证/i.test(error?.message || "");
 }

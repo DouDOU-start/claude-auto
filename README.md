@@ -1,6 +1,6 @@
-# Claude Email Automation
+# Claude 浏览器自动化工具
 
-基于 Chrome DevTools Protocol 的 Claude 邮箱注册自动化工具。支持代理启动独立浏览器 profile、发送 magic link、读取 Microsoft 邮箱、完成 onboarding，并提取 cookies 中的 `sessionKey`。
+基于 Node.js 22 和 Chrome DevTools Protocol 的 Claude 浏览器自动化工具。支持邮箱注册、代理浏览器、已有会话打开、终端聊天和 Anthropic 兼容 API。所有 Claude Web 请求都在真实 Chrome 页面上下文中发出，以保持浏览器 TLS 指纹和 Cloudflare 会话。
 
 ## 免责声明
 
@@ -15,14 +15,17 @@
 - 支持 Microsoft Graph / IMAP 自动兜底读取邮件。
 - 支持使用已有 `sessionKey` 打开 Claude。
 - 支持动态代理失败重试。
+- 支持终端流式聊天。
+- 支持 Anthropic `/v1/messages` 兼容 API。
+- 项目统一使用 Node.js，不需要 Go 工具链。
 
 ## 环境要求
 
-- Windows
+- Windows 或 Linux
 - Node.js 22+
 - 首次运行需要网络下载 Chromium
 
-正常使用不需要执行 `npm install`。`browsers/`、`profiles/`、`logs/` 和 `config/proxy.json` 均已忽略，不会提交到 Git。
+项目当前没有第三方 npm 运行依赖，正常使用不需要执行 `npm install`。`browsers/`、`profiles/`、`logs/` 和本地敏感配置均已忽略，不会提交到 Git。
 
 ## 浏览器
 
@@ -77,10 +80,39 @@ Chrome -> http://127.0.0.1:<port> -> authenticated upstream proxy
 
 仓库提供模板：`config/proxy.example.json`。
 
+### Claude 本地配置
+
+聊天和 API 服务使用：
+
+```text
+config/claude.local.json
+```
+
+同时兼容被忽略的 `config/claude.local.yaml`，旧 Go 配置已迁移到该位置。
+
+从模板复制：
+
+```powershell
+Copy-Item .\config\claude.example.json .\config\claude.local.json
+```
+
+至少填写 `sessionKeys`。也可以完全使用环境变量：
+
+```powershell
+$env:CLAUDE_SESSION_KEY = "sk-ant-sid02-..."
+$env:CLAUDE_PROXY_URL = "http://user:password@host:port"
+```
+
+敏感配置优先级：
+
+```text
+命令行参数 > 环境变量 > config/claude.local.json > config/proxy.json
+```
+
 ## 快速开始
 
 ```powershell
-cd claude-email-automation
+cd claude-auto
 ```
 
 交互式注册：
@@ -99,6 +131,24 @@ node .\src\auto-register-mail.js --account "email----password----client_id----re
 
 ```powershell
 node .\src\open-with-session.js --session-key "sk-ant-sid02-..."
+```
+
+只打开一个带代理的浏览器（不登录、不注册，纯浏览）：
+
+```powershell
+node .\src\open-browser.js
+```
+
+终端聊天：
+
+```powershell
+npm run chat
+```
+
+启动 Anthropic 兼容 API：
+
+```powershell
+npm run api
 ```
 
 ## 邮箱组自动注册
@@ -224,6 +274,80 @@ node .\src\open-with-session.js `
 https://claude.ai/chat
 ```
 
+## 纯代理浏览器
+
+不登录、不注册、不做任何页面自动化，只是用配置好的代理打开一个 Chrome 窗口，窗口会一直保留，直到手动关闭或 Ctrl+C 停掉本地代理桥：
+
+```powershell
+node .\src\open-browser.js
+```
+
+指定打开的地址：
+
+```powershell
+node .\src\open-browser.js --url https://claude.ai/login
+```
+
+默认打开：
+
+```text
+https://claude.ai/
+```
+
+## 终端聊天
+
+启动：
+
+```powershell
+npm run chat
+```
+
+可用命令：
+
+```text
+/new    新建会话
+/model  切换模型
+/quit   退出
+```
+
+终端聊天会启动一个独立 Chromium，并通过页面内流式请求与 Claude Web 接口通信。首次运行如果出现 Cloudflare 验证，需要在浏览器窗口中手动完成；该 profile 会保留供后续复用。确认环境可以稳定通过验证后，可改用无头模式：
+
+```powershell
+npm run chat -- --headless
+```
+
+## Anthropic 兼容 API
+
+默认只监听本机：
+
+```text
+http://127.0.0.1:8080
+```
+
+启动：
+
+```powershell
+npm run api
+```
+
+请求示例：
+
+```powershell
+curl http://127.0.0.1:8080/v1/messages `
+  -H "content-type: application/json" `
+  -d '{"model":"claude-sonnet-5","max_tokens":1024,"messages":[{"role":"user","content":"你好"}]}'
+```
+
+对外监听时必须配置访问密钥：
+
+```powershell
+$env:CLAUDE_API_HOST = "0.0.0.0"
+$env:CLAUDE_API_KEY = "替换为随机密钥"
+npm run api
+```
+
+客户端通过 `x-api-key` 或 `Authorization: Bearer <密钥>` 访问。请求体默认限制为 20 MB。
+
 ## Microsoft 邮件令牌
 
 自动模式：
@@ -287,9 +411,8 @@ magic link 对应邮箱与当前注册邮箱不一致。使用匹配的账号重
 ## 开发
 
 ```powershell
-node --check .\src\interactive-register.js
-node --check .\src\auto-register-mail.js
-node --check .\src\browser-utils.js
+npm test
+npm run check
 git status --short --ignored
 ```
 
@@ -298,7 +421,10 @@ git status --short --ignored
 - 浏览器控制使用 Chrome DevTools Protocol。
 - magic-link 请求在 `claude.ai` 页面上下文中执行。
 - 每次运行默认创建新的 profile、DevTools 端口和本地代理桥。
+- 聊天与 API 请求通过后台 Chrome 页面内的 `fetch` 发出。
+- `src/claude/` 负责 Claude Web 客户端、SSE 和协议适配。
+- `src/core/` 负责浏览器运行时与命令行公共能力。
 
-## License
+## 许可证
 
-MIT License. See `LICENSE`.
+使用 MIT 许可证，详见 `LICENSE`。

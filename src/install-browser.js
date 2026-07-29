@@ -5,7 +5,7 @@ const projectRoot = resolve(new URL("..", import.meta.url).pathname.replace(/^\/
 const existingBrowser = projectBrowserCandidates(projectRoot)[0] || "";
 
 if (existingBrowser) {
-  console.log(`[browser] Chromium already installed: ${existingBrowser}`);
+  console.log(`[浏览器] Chromium 已安装：${existingBrowser}`);
 } else {
   installProjectBrowser(projectRoot);
 }

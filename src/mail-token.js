@@ -25,7 +25,7 @@ const TOKEN_ENDPOINT = "https://login.microsoftonline.com/consumers/oauth2/v2.0/
 
 if (isCliEntry()) {
   main().catch((error) => {
-    console.error(`ERROR: ${error.message}`);
+    console.error(`错误：${error.message}`);
     process.exitCode = 1;
   });
 }
@@ -68,7 +68,7 @@ export async function autoGetMailToken({ refreshToken, clientId }) {
       if (mode.required) throw error;
     }
   }
-  throw lastError || new Error("All mail token modes failed.");
+  throw lastError || new Error("所有邮件令牌模式均失败。");
 }
 
 export async function autoGetMail(refresh_token, client_id) {
@@ -144,15 +144,15 @@ async function requestMailToken({ refreshToken, clientId, mode }) {
 
 function formatTokenError({ mode, response, data }) {
   const code = data.error || response.status;
-  const description = data.error_description || data.raw || response.statusText || "token request failed";
-  return `${mode.label} token failed: ${code} - ${description}`;
+  const description = data.error_description || data.raw || response.statusText || "令牌请求失败";
+  return `${mode.label} 令牌失败：${code} - ${description}`;
 }
 
 function findMode(value) {
   const normalized = String(value || "").toLowerCase();
   const mode = MODES.find((item) => item.mode === normalized || item.label.toLowerCase() === normalized);
   if (!mode) {
-    throw new Error(`Unknown mode: ${value}. Use new-gr, old-gr, or imap.`);
+    throw new Error(`未知模式：${value}。请使用 new-gr、old-gr 或 imap。`);
   }
   return mode;
 }
@@ -181,21 +181,21 @@ function isCliEntry() {
 
 function printHelp() {
   console.log(`
-Usage:
+用法：
   node src/mail-token.js --refresh-token <refreshToken> --client-id <clientId> [options]
 
-Options:
-  --refresh-token <value>  Required. Microsoft refresh token.
-  --client-id <value>      Required. Microsoft OAuth client ID.
-  --mode <mode>            Optional. new-gr, old-gr, or imap. Default: auto fallback order.
-  --help                   Show this help.
+选项：
+  --refresh-token <值>     必填，Microsoft 刷新令牌。
+  --client-id <值>         必填，Microsoft OAuth 客户端 ID。
+  --mode <模式>            可选：new-gr、old-gr 或 imap，默认自动兜底。
+  --help                   显示帮助。
 
-Auto fallback order:
+自动兜底顺序：
   1. new-gr: User.Read Mail.Read offline_access
   2. old-gr: https://graph.microsoft.com/.default
   3. imap:   https://outlook.office.com/IMAP.AccessAsUser.All offline_access
 
-Examples:
+示例：
   node src/mail-token.js --refresh-token "..." --client-id "..."
   node src/mail-token.js --refresh-token "..." --client-id "..." --mode imap
 `);

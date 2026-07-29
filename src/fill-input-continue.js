@@ -3,7 +3,7 @@ import { CdpClient, findClaudePage } from "./cdp-client.js";
 const debugPort = Number(process.argv[2]);
 const value = process.argv[3];
 if (!debugPort || !value) {
-  throw new Error("usage: node src/fill-input-continue.js <debugPort> <value>");
+  throw new Error("用法：node src/fill-input-continue.js <DevTools端口> <值>");
 }
 
 const page = await findClaudePage(debugPort);
@@ -17,7 +17,7 @@ try {
           const rect = el.getBoundingClientRect();
           return rect.width > 0 && rect.height > 0 && !el.disabled;
         });
-      if (!input) return { ok: false, reason: "visible input not found" };
+      if (!input) return { ok: false, reason: "未找到可见输入框" };
       input.scrollIntoView({ block: "center", inline: "center" });
       input.focus();
       const setter = Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")?.set;
@@ -38,7 +38,7 @@ try {
     (() => {
       const button = [...document.querySelectorAll("button")]
         .find((el) => /continue|next|submit/i.test(el.textContent || "") && !el.disabled);
-      if (!button) return { clicked: false, reason: "enabled continue button not found" };
+      if (!button) return { clicked: false, reason: "未找到可用的继续按钮" };
       button.click();
       return { clicked: true, text: button.textContent?.trim() };
     })()

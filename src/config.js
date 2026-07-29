@@ -7,10 +7,10 @@ export function resolveProxyUrl({ requestedProxy = "", projectRoot }) {
   if (!proxyUrl) {
     throw new Error(
       [
-        "No upstream proxy configured.",
-        "Pass --proxy <proxy-url>,",
-        "set CLAUDE_PROXY_URL,",
-        `or create ${join(projectRoot, "config", "proxy.json")}.`,
+        "没有配置上游代理。",
+        "请传入 --proxy <代理地址>，",
+        "设置 CLAUDE_PROXY_URL，",
+        `或创建 ${join(projectRoot, "config", "proxy.json")}。`,
       ].join(" "),
     );
   }

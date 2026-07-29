@@ -2,7 +2,7 @@ import { CdpClient, findClaudePage } from "./cdp-client.js";
 
 const debugPort = Number(process.argv[2]);
 if (!debugPort) {
-  throw new Error("usage: node src/onboarding-create.js <debugPort>");
+  throw new Error("用法：node src/onboarding-create.js <DevTools端口>");
 }
 
 const page = await findClaudePage(debugPort);
@@ -31,7 +31,7 @@ try {
       if (boxes[1]) setChecked(boxes[1], false);
       const button = [...document.querySelectorAll("button")]
         .find((el) => /create account/i.test(el.textContent || ""));
-      if (!button) return { ok: false, reason: "Create account button not found" };
+      if (!button) return { ok: false, reason: "未找到创建账号按钮" };
       button.click();
       return {
         ok: true,

@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { parseMailAccountLine, pollClaudeMagicLink } from "./mailbox.js";
 
 main().catch((error) => {
-  console.error(`ERROR: ${error.message}`);
+  console.error(`错误：${error.message}`);
   process.exitCode = 1;
 });
 
@@ -18,13 +18,13 @@ async function main() {
   const accounts = await loadAccounts(args);
   if (!accounts.length) {
     printHelp();
-    throw new Error("No mail accounts provided.");
+    throw new Error("没有提供邮箱账号。");
   }
 
   const results = [];
   for (let index = 0; index < accounts.length; index += 1) {
     const account = accounts[index];
-    console.log(`[account ${index + 1}/${accounts.length}] Registering ${account.email}`);
+    console.log(`[账号 ${index + 1}/${accounts.length}] 正在注册 ${account.email}`);
     const result = await runAutoRegistrationWithRetries({ account, args });
     results.push(result);
   }
@@ -37,18 +37,18 @@ async function runAutoRegistrationWithRetries({ account, args }) {
   let lastError = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    if (attempt > 1) console.log(`[retry] Attempt ${attempt}/${maxAttempts} for ${account.email}`);
+    if (attempt > 1) console.log(`[重试] ${account.email} 第 ${attempt}/${maxAttempts} 次尝试`);
     try {
       return await runAutoRegistration({ account, args, attempt });
     } catch (error) {
       lastError = error;
       if (!isRetryableRegistrationError(error) || attempt === maxAttempts) throw error;
-      console.log(`[retry] ${error.message}`);
+      console.log(`[重试] ${error.message}`);
       await wait(Number(args.retryDelay || 3000));
     }
   }
 
-  throw lastError || new Error(`Registration failed for ${account.email}.`);
+  throw lastError || new Error(`${account.email} 注册失败。`);
 }
 
 async function runAutoRegistration({ account, args, attempt = 1 }) {
@@ -86,17 +86,17 @@ async function runAutoRegistration({ account, args, attempt = 1 }) {
   const sendMagicLinkWhenReady = async () => {
     if (magicLinkSent) return;
     magicLinkSent = true;
-    console.log(`[mail] Polling ${account.email} for Claude magic link...`);
+    console.log(`[邮件] 正在轮询 ${account.email} 中的 Claude Magic Link……`);
     const mail = await pollClaudeMagicLink({
       account,
       since: new Date(startedAt.getTime() - 30000),
       timeoutMs: Number(args.mailTimeout || 180000),
       intervalMs: Number(args.mailInterval || 5000),
-      log: (message) => console.log(`[mail] ${message}`),
+      log: (message) => console.log(`[邮件] ${message}`),
     });
     magicLink = mail.magicLink;
-    if (!magicLink) throw new Error("Mail polling returned without a magic link.");
-    console.log(`[mail] Found Claude magic link via ${mail.mode}.`);
+    if (!magicLink) throw new Error("邮件轮询结束，但没有返回 Magic Link。");
+    console.log(`[邮件] 已通过 ${mail.mode} 找到 Claude Magic Link。`);
     child.stdin.write(`${magicLink}\n`);
   };
 
@@ -104,10 +104,10 @@ async function runAutoRegistration({ account, args, attempt = 1 }) {
     const text = chunk.toString();
     stdout += text;
     process.stdout.write(text);
-    if (stdout.includes("Magic link URL:")) {
+    if (stdout.includes("Magic Link 地址：")) {
       sendMagicLinkWhenReady().catch((error) => {
         pollingError = error;
-        console.error(`ERROR: ${error.message}`);
+        console.error(`错误：${error.message}`);
         child.stdin.write("about:blank\n", () => child.stdin.end());
       });
     }
@@ -129,7 +129,7 @@ async function runAutoRegistration({ account, args, attempt = 1 }) {
       exitCode: null,
       childPid: child.pid,
       blocked: true,
-      reason: "Phone verification required",
+      reason: "需要手机验证",
       stderr: stderr.trim(),
     };
   }
@@ -151,11 +151,11 @@ async function runAutoRegistration({ account, args, attempt = 1 }) {
   if (exitResult.code !== 0) {
     const errorText = `${stdout}\n${stderr}`;
     if (pollingError) {
-      throw new Error(`Mail polling failed for ${account.email}. ${pollingError.message}`);
+      throw new Error(`${account.email} 邮件轮询失败：${pollingError.message}`);
     }
     if (args.keepOpenOnError) {
       if (!isManualOnboardingText(errorText)) {
-        throw new Error(`Registration process failed for ${account.email} with exit code ${exitResult.code}. ${summarizeFailure(errorText)}`);
+        throw new Error(`${account.email} 注册进程失败，退出码 ${exitResult.code}。${summarizeFailure(errorText)}`);
       }
       return {
         email: account.email,
@@ -166,7 +166,7 @@ async function runAutoRegistration({ account, args, attempt = 1 }) {
         stderr: stderr.trim(),
       };
     }
-    throw new Error(`Registration process failed for ${account.email} with exit code ${exitResult.code}. ${summarizeFailure(errorText)}`);
+    throw new Error(`${account.email} 注册进程失败，退出码 ${exitResult.code}。${summarizeFailure(errorText)}`);
   }
 
   return {
@@ -268,43 +268,43 @@ function parseArgs(argv) {
 
 function printHelp() {
   console.log(`
-Usage:
+用法：
   node src/auto-register-mail.js --account "<email>----<password>----<client_id>----<refresh_token>" [options]
   node src/auto-register-mail.js --accounts-file accounts.txt [options]
 
-Options:
-  --account <line>         One account line: email----password----client_id----refresh_token.
-  --accounts-file <path>   File with one account line per row.
-  --mail-timeout <ms>      Mail polling timeout. Default: 180000.
-  --mail-interval <ms>     Mail polling interval. Default: 5000.
-  --max-attempts <n>       Retry count for proxy/login failures. Default: 3.
-  --retry-delay <ms>       Delay between retry attempts. Default: 3000.
-  --registration-timeout <ms> Parent process timeout. Default: 600000.
-  --devtools-timeout <ms>  Child DevTools timeout. Default: 30000.
-  --login-timeout <ms>     Child Claude login timeout. Default: 90000.
-  --name <name>            Optional Claude display name.
-  --birthday <MM/DD/YYYY>  Optional birthday. Default comes from interactive-register.js.
-  --proxy <proxy-url>      Optional proxy override.
-  --chrome <path>          Optional browser override.
-  --keep-open              Keep browser open after registration.
-  --keep-open-on-error     Keep browser open when onboarding needs manual action.
-  --help                   Show this help.
+选项：
+  --account <账号行>       单个账号：email----password----client_id----refresh_token。
+  --accounts-file <路径>   每行一个账号的文件。
+  --mail-timeout <毫秒>    邮件轮询超时，默认 180000。
+  --mail-interval <毫秒>   邮件轮询间隔，默认 5000。
+  --max-attempts <次数>    代理或登录失败重试次数，默认 3。
+  --retry-delay <毫秒>     重试间隔，默认 3000。
+  --registration-timeout <毫秒> 父进程超时，默认 600000。
+  --devtools-timeout <毫秒> 子进程 DevTools 超时，默认 30000。
+  --login-timeout <毫秒>   Claude 登录页超时，默认 90000。
+  --name <姓名>            可选的 Claude 显示名称。
+  --birthday <MM/DD/YYYY>  可选生日。
+  --proxy <代理地址>       可选代理覆盖。
+  --chrome <路径>          可选浏览器覆盖。
+  --keep-open              注册后保留浏览器。
+  --keep-open-on-error     需要人工处理时保留浏览器。
+  --help                   显示帮助。
 `);
 }
 
 function isRetryableRegistrationError(error) {
-  return /Claude login page not ready|ERR_TUNNEL_CONNECTION_FAILED|DevTools port did not open|tunnel|proxy/i.test(error?.message || "");
+  return /Claude 登录页未就绪|ERR_TUNNEL_CONNECTION_FAILED|DevTools 端口未能按时启动|隧道|代理/i.test(error?.message || "");
 }
 
 function isManualOnboardingText(text) {
-  return /Phone verification required/i.test(text || "");
+  return /需要手机验证/i.test(text || "");
 }
 
 function summarizeFailure(text) {
   const value = String(text || "");
-  if (/ERR_TUNNEL_CONNECTION_FAILED/i.test(value)) return "Detected proxy tunnel failure.";
-  if (/Claude login page not ready/i.test(value)) return "Claude login page was not ready, likely proxy or Cloudflare loading failure.";
-  if (/Phone verification required/i.test(value)) return "Phone verification required.";
+  if (/ERR_TUNNEL_CONNECTION_FAILED/i.test(value)) return "检测到代理隧道失败。";
+  if (/Claude 登录页未就绪/i.test(value)) return "Claude 登录页未就绪，可能是代理或 Cloudflare 加载失败。";
+  if (/需要手机验证/i.test(value)) return "需要手机验证。";
   return value.split(/\r?\n/).filter(Boolean).slice(-3).join(" ").slice(0, 800);
 }
 
