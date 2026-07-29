@@ -18,6 +18,8 @@ export const claudeRegistrationProvider = Object.freeze({
   pageUrlIncludes: "claude.ai",
   profilePrefix: "claude-register",
   resultFilePrefix: "claude-register",
+  verificationLabel: "邮箱验证链接",
+  verificationPrompt: "Magic Link 地址：",
   interestingRequestMatcher: /send_magic_link|login_methods|auth/i,
 
   createProfile(options) {
@@ -44,11 +46,11 @@ export const claudeRegistrationProvider = Object.freeze({
     return parseClaudeMagicLinkSent(result.responseText);
   },
 
-  validateVerificationUrl(url, email) {
+  validateVerification(url, email) {
     validateClaudeMagicLink(url, email);
   },
 
-  openVerification(cdp, url, { signal }) {
+  completeVerification(cdp, url, { signal }) {
     return openClaudeMagicLink(cdp, url, signal);
   },
 
@@ -69,7 +71,7 @@ export const claudeRegistrationProvider = Object.freeze({
       log,
       signal,
     });
-    return { ...result, verificationUrl: result.magicLink };
+    return { ...result, verification: result.magicLink, verificationUrl: result.magicLink };
   },
 
   isManualActionError(error) {

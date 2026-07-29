@@ -22,6 +22,7 @@ export async function runRegistration({
   loginTimeout = 90000,
   keepOpen = false,
   keepOpenOnError = false,
+  getVerification,
   getVerificationUrl,
   onEvent = () => {},
   signal,
@@ -29,7 +30,8 @@ export async function runRegistration({
 }) {
   assertProvider(provider);
   if (!email) throw new Error("缺少注册邮箱。");
-  if (typeof getVerificationUrl !== "function") throw new Error("缺少验证链接获取方法。");
+  const verificationGetter = getVerification || getVerificationUrl;
+  if (typeof verificationGetter !== "function") throw new Error("缺少邮箱验证信息获取方法。");
 
   const startedAt = Date.now();
   const actualProfileDir = resolve(
@@ -90,7 +92,8 @@ export async function runRegistration({
     report(2, `正在等待 ${provider.displayName} 登录页……`);
     await provider.waitForLoginReady(runtime.cdp, { timeoutMs: Number(loginTimeout), signal });
 
-    report(3, "正在发送邮箱验证链接……");
+    const verificationLabel = provider.verificationLabel || "邮箱验证信息";
+    report(3, `正在发送${verificationLabel}……`);
     await provider.submitEmail(runtime.cdp, email, { signal });
     const sendResult = await provider.sendVerification(runtime.cdp, email, { signal });
     onEvent({
@@ -102,15 +105,15 @@ export async function runRegistration({
       responseText: sendResult.responseText,
     });
 
-    report(4, "正在获取邮箱验证链接……");
-    const verificationUrl = String(
-      await getVerificationUrl({ provider, email, sendResult, runtime, signal }),
+    report(4, `正在获取${verificationLabel}……`);
+    const verification = String(
+      await verificationGetter({ provider, email, sendResult, runtime, signal }),
     ).trim();
-    if (!verificationUrl) throw new Error("没有获取到邮箱验证链接。");
-    provider.validateVerificationUrl(verificationUrl, email);
+    if (!verification) throw new Error(`没有获取到${verificationLabel}。`);
+    validateVerification(provider, verification, email);
 
-    report(5, "正在当前浏览器中打开验证链接……");
-    await provider.openVerification(runtime.cdp, verificationUrl, { signal });
+    report(5, `正在当前浏览器中完成${verificationLabel}……`);
+    await completeVerification(provider, runtime.cdp, verification, { email, profile, signal });
 
     report(6, "正在完成新用户引导……");
     await provider.completeOnboarding(runtime.cdp, { profile, signal });
@@ -169,6 +172,8 @@ export function registrationResultSummary(result) {
     provider: result.provider,
     email: result.email,
     name: result.name,
+    givenName: result.givenName,
+    familyName: result.familyName,
     birthday: result.birthday,
     durationMs: result.durationMs,
     durationSeconds: result.durationSeconds,
@@ -176,6 +181,7 @@ export function registrationResultSummary(result) {
     sessionKey: result.sessionKey,
     sessionKeyLC: result.sessionKeyLC,
     orgId: result.orgId,
+    userId: result.userId,
     profileDir: result.profileDir,
     debugPort: result.debugPort,
     outputPath: result.outputPath,
@@ -189,8 +195,6 @@ function assertProvider(provider) {
     "submitEmail",
     "sendVerification",
     "verificationWasSent",
-    "validateVerificationUrl",
-    "openVerification",
     "completeOnboarding",
     "extractSession",
     "isManualActionError",
@@ -204,6 +208,28 @@ function assertProvider(provider) {
       throw new Error(`注册服务适配器缺少方法：${method}`);
     }
   }
+  if (
+    typeof provider.validateVerification !== "function" &&
+    typeof provider.validateVerificationUrl !== "function"
+  ) {
+    throw new Error("注册服务适配器缺少方法：validateVerification");
+  }
+  if (
+    typeof provider.completeVerification !== "function" &&
+    typeof provider.openVerification !== "function"
+  ) {
+    throw new Error("注册服务适配器缺少方法：completeVerification");
+  }
+}
+
+function validateVerification(provider, verification, email) {
+  const validate = provider.validateVerification || provider.validateVerificationUrl;
+  return validate.call(provider, verification, email);
+}
+
+function completeVerification(provider, cdp, verification, context) {
+  const complete = provider.completeVerification || provider.openVerification;
+  return complete.call(provider, cdp, verification, context);
 }
 
 function localProxyOf(runtime) {

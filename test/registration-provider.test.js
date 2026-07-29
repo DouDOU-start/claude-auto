@@ -10,13 +10,20 @@ import { parseMailAccountLine } from "../src/mail/account.js";
 import { availableRegistrationProviders, getRegistrationProvider } from "../src/providers/index.js";
 import { extractClaudeMagicLink } from "../src/providers/claude/mail.js";
 import { validateClaudeMagicLink } from "../src/providers/claude/login.js";
+import { extractGrokVerificationCode } from "../src/providers/grok/mail.js";
+import {
+  normalizeGrokVerificationCode,
+  validateGrokVerificationCode,
+} from "../src/providers/grok/login.js";
+import { createGrokProfile } from "../src/providers/grok/profile.js";
 
-test("注册服务适配器注册表可以解析 Claude 实现", () => {
-  assert.deepEqual(availableRegistrationProviders(), ["claude"]);
+test("注册服务适配器注册表可以解析 Claude 和 Grok 实现", () => {
+  assert.deepEqual(availableRegistrationProviders(), ["claude", "grok"]);
   const provider = getRegistrationProvider("CLAUDE");
   assert.equal(provider.id, "claude");
   assert.equal(typeof provider.completeOnboarding, "function");
   assert.equal(typeof provider.pollVerification, "function");
+  assert.equal(getRegistrationProvider("GROK").id, "grok");
 });
 
 test("Claude Magic Link 提取会校验目标邮箱", () => {
@@ -40,12 +47,30 @@ test("通用邮件轮询器不依赖具体站点", async () => {
       attempts += 1;
       return {
         mode: "测试邮箱",
-        verificationUrl: attempts > 1 ? "https://example.com/verify" : "",
+        verification: attempts > 1 ? "ABC123" : "",
       };
     },
   });
-  assert.equal(result.verificationUrl, "https://example.com/verify");
+  assert.equal(result.verification, "ABC123");
   assert.equal(attempts, 2);
+});
+
+test("Grok 邮件安全码支持真实的三位分组格式", () => {
+  const content = "Your one time security code is ABC-123. Use it to finish signing up for Grok.";
+  assert.equal(extractGrokVerificationCode(content), "ABC123");
+  assert.equal(normalizeGrokVerificationCode("abc-123"), "ABC123");
+  assert.doesNotThrow(() => validateGrokVerificationCode("ABC-123"));
+  assert.throws(() => validateGrokVerificationCode("12345"), /6 位/);
+});
+
+test("Grok 注册资料支持姓名拆分和密码校验", () => {
+  assert.deepEqual(createGrokProfile({ name: "Alex Morgan", password: "Passw0rd!" }), {
+    givenName: "Alex",
+    familyName: "Morgan",
+    displayName: "Alex Morgan",
+    password: "Passw0rd!",
+  });
+  assert.throws(() => createGrokProfile({ password: "short" }), /不能少于 8 个字符/);
 });
 
 test("邮箱账号解析逻辑已与 Claude 邮件匹配解耦", () => {
@@ -85,7 +110,7 @@ test("通用注册编排器按服务适配器接口执行并关闭资源", async
       projectRoot,
       email: "user@example.com",
       profile: { displayName: "测试用户" },
-      getVerificationUrl: async () => "https://example.com/verify",
+      getVerification: async () => "ABC123",
       openRuntime: async () => ({
         cdp,
         bridge: null,
@@ -105,8 +130,8 @@ test("通用注册编排器按服务适配器接口执行并关闭资源", async
       "等待登录页",
       "填写邮箱",
       "发送验证",
-      "校验链接",
-      "打开链接",
+      "校验验证信息",
+      "完成验证",
       "完成引导",
       "提取会话",
     ]);
@@ -133,8 +158,8 @@ function createTestProvider(calls) {
       return { status: 200, responseText: "{}" };
     },
     verificationWasSent: () => true,
-    validateVerificationUrl: () => calls.push("校验链接"),
-    openVerification: async () => calls.push("打开链接"),
+    validateVerification: () => calls.push("校验验证信息"),
+    completeVerification: async () => calls.push("完成验证"),
     completeOnboarding: async () => calls.push("完成引导"),
     extractSession: async () => {
       calls.push("提取会话");

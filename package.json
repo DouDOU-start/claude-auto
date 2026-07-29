@@ -4,7 +4,7 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "基于 Chrome DevTools Protocol 的 Claude 浏览器自动化、聊天和兼容 API 工具。",
+  "description": "基于 Chrome DevTools Protocol 的 Claude 与 Grok 浏览器自动化工具。",
   "scripts": {
     "interactive": "node src/commands/register.js",
     "auto-register-mail": "node src/commands/register-batch.js",

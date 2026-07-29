@@ -23,7 +23,7 @@ export async function runRegisterBatchCommand(argv = process.argv.slice(2)) {
 
   const projectRoot = projectRootFrom(import.meta.url);
   const provider = getRegistrationProvider(args.provider);
-  const proxyUrl = resolveProxyUrl({ requestedProxy: args.proxy, projectRoot });
+  const proxyUrl = args.noProxy ? "" : resolveProxyUrl({ requestedProxy: args.proxy, projectRoot });
   const results = [];
 
   for (let index = 0; index < accounts.length; index += 1) {
@@ -70,7 +70,13 @@ async function runSingleRegistration({ account, args, projectRoot, provider, pro
       provider,
       projectRoot,
       email: account.email,
-      profile: provider.createProfile({ name: args.name, birthday: args.birthday }),
+      profile: provider.createProfile({
+        name: args.name,
+        givenName: args.givenName,
+        familyName: args.familyName,
+        password: args.password,
+        birthday: args.birthday,
+      }),
       proxyUrl,
       chromePath: args.chrome,
       profileDir: args.profileDir,
@@ -82,8 +88,9 @@ async function runSingleRegistration({ account, args, projectRoot, provider, pro
       keepOpen: Boolean(args.keepOpen),
       keepOpenOnError: Boolean(args.keepOpenOnError),
       signal: controller.signal,
-      getVerificationUrl: async () => {
-        console.log(`[邮件] 正在轮询 ${account.email} 中的 ${provider.displayName} 验证链接……`);
+      getVerification: async () => {
+        const verificationLabel = provider.verificationLabel || "邮箱验证信息";
+        console.log(`[邮件] 正在轮询 ${account.email} 中的 ${provider.displayName} ${verificationLabel}……`);
         const mail = await provider.pollVerification({
           account,
           since: new Date(startedAt.getTime() - 30000),
@@ -92,11 +99,12 @@ async function runSingleRegistration({ account, args, projectRoot, provider, pro
           signal: controller.signal,
           log: (message) => console.log(`[邮件] ${message}`),
         });
-        verificationFound = Boolean(mail.verificationUrl);
+        const verification = mail.verification || mail.verificationUrl || "";
+        verificationFound = Boolean(verification);
         if (verificationFound) {
-          console.log(`[邮件] 已通过 ${mail.mode} 找到 ${provider.displayName} 验证链接。`);
+          console.log(`[邮件] 已通过 ${mail.mode} 找到 ${provider.displayName} ${verificationLabel}。`);
         }
-        return mail.verificationUrl;
+        return verification;
       },
       onEvent: printRegistrationEvent,
     });
@@ -174,7 +182,7 @@ function printHelp() {
   node src/commands/register-batch.js --accounts-file accounts.txt [选项]
 
 选项：
-  --provider <名称>       注册服务适配器，当前支持 claude。
+  --provider <名称>       注册服务适配器，支持 claude、grok。
   --account <账号行>      单个账号：email----password----client_id----refresh_token。
   --accounts-file <路径>  每行一个账号的文件。
   --mail-timeout <毫秒>   邮件轮询超时，默认 180000。
@@ -185,8 +193,12 @@ function printHelp() {
   --devtools-timeout <毫秒> DevTools 启动超时，默认 30000。
   --login-timeout <毫秒>  登录页超时，默认 90000。
   --name <姓名>           可选的显示名称。
+  --given-name <名字>     Grok 注册名字。
+  --family-name <姓氏>    Grok 注册姓氏。
+  --password <密码>       Grok 注册密码，默认随机生成。
   --birthday <MM/DD/YYYY> 可选生日。
   --proxy <代理地址>      可选代理覆盖。
+  --no-proxy              本次注册不使用代理。
   --chrome <路径>         可选浏览器覆盖。
   --keep-open             注册后保留浏览器。
   --keep-open-on-error    需要人工处理时保留浏览器。

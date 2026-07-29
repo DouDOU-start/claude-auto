@@ -7,7 +7,7 @@ const GRAPH_MESSAGES_URL =
 
 export async function tryReadOutlookVerification({ account, since, extractVerification, signal }) {
   const graph = await tryReadGraphVerification({ account, since, extractVerification, signal });
-  if (graph.verificationUrl || graph.tokenOk) return graph;
+  if (graph.verification || graph.tokenOk) return graph;
   return tryReadImapVerification({ account, since, extractVerification, signal });
 }
 
@@ -29,7 +29,8 @@ async function tryReadGraphVerification({ account, since, extractVerification, s
         modeId: token.mode,
         tokenOk: true,
         graphOk: true,
-        verificationUrl: match.verificationUrl,
+        verification: match.verification,
+        verificationUrl: match.verification,
         message: match.message,
         checkedMessages: messages.length,
       };
@@ -42,6 +43,7 @@ async function tryReadGraphVerification({ account, since, extractVerification, s
     mode: "Graph",
     tokenOk: false,
     graphOk: false,
+    verification: "",
     verificationUrl: "",
     errors: tokenResults,
   };
@@ -83,7 +85,14 @@ async function tryReadImapVerification({ account, since, extractVerification, si
     const uidLine = search.split(/\r?\n/).find((line) => /^\* SEARCH/i.test(line)) || "";
     const uids = uidLine.replace(/^\* SEARCH\s*/i, "").trim().split(/\s+/).filter(Boolean).slice(-20);
     if (!uids.length) {
-      return { mode: "IMAP", tokenOk: true, imapOk: true, verificationUrl: "", checkedMessages: 0 };
+      return {
+        mode: "IMAP",
+        tokenOk: true,
+        imapOk: true,
+        verification: "",
+        verificationUrl: "",
+        checkedMessages: 0,
+      };
     }
 
     const fetchText = await imapCommand(
@@ -94,11 +103,13 @@ async function tryReadImapVerification({ account, since, extractVerification, si
       signal,
     );
     await imapCommand(socket, "A5", "LOGOUT", 10000, signal).catch(() => null);
+    const verification = extractVerification(fetchText, account.email);
     return {
       mode: "IMAP",
       tokenOk: true,
       imapOk: true,
-      verificationUrl: extractVerification(fetchText, account.email),
+      verification,
+      verificationUrl: verification,
       checkedMessages: uids.length,
       since: since.toISOString(),
     };
@@ -108,6 +119,7 @@ async function tryReadImapVerification({ account, since, extractVerification, si
       mode: "IMAP",
       tokenOk: false,
       imapOk: false,
+      verification: "",
       verificationUrl: "",
       error: error.message,
     };
@@ -126,10 +138,10 @@ function findVerificationInMessages(messages, email, since, extractVerification)
       message.body?.content,
       message.from?.emailAddress?.address,
     ].filter(Boolean).join("\n");
-    const verificationUrl = extractVerification(haystack, email);
-    if (verificationUrl) {
+    const verification = extractVerification(haystack, email);
+    if (verification) {
       return {
-        verificationUrl,
+        verification,
         message: {
           subject: message.subject || "",
           receivedDateTime: message.receivedDateTime || "",
@@ -138,7 +150,7 @@ function findVerificationInMessages(messages, email, since, extractVerification)
       };
     }
   }
-  return { verificationUrl: "", message: null };
+  return { verification: "", message: null };
 }
 
 async function connectImap(signal) {

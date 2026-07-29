@@ -17,9 +17,15 @@ export async function runRegisterCommand(argv = process.argv.slice(2)) {
 
   const projectRoot = projectRootFrom(import.meta.url);
   const provider = getRegistrationProvider(args.provider);
-  const proxyUrl = resolveProxyUrl({ requestedProxy: args.proxy, projectRoot });
+  const proxyUrl = args.noProxy ? "" : resolveProxyUrl({ requestedProxy: args.proxy, projectRoot });
   const email = args.email || `student-${randomBytes(5).toString("hex")}@${args.domain || "k9ray.com"}`;
-  const profile = provider.createProfile({ name: args.name, birthday: args.birthday });
+  const profile = provider.createProfile({
+    name: args.name,
+    givenName: args.givenName,
+    familyName: args.familyName,
+    password: args.password,
+    birthday: args.birthday,
+  });
   const rl = createInterface({ input, output });
 
   try {
@@ -38,7 +44,7 @@ export async function runRegisterCommand(argv = process.argv.slice(2)) {
       loginTimeout: Number(args.loginTimeout || 90000),
       keepOpen: Boolean(args.keepOpen),
       keepOpenOnError: Boolean(args.keepOpenOnError),
-      getVerificationUrl: () => askNonEmpty(rl, "Magic Link 地址："),
+      getVerification: () => askNonEmpty(rl, provider.verificationPrompt || "邮箱验证信息："),
       onEvent: printRegistrationEvent,
     });
 
@@ -99,12 +105,16 @@ function printHelp() {
   node src/commands/register.js [选项]
 
 选项：
-  --provider <名称>       注册服务适配器，当前支持 claude。
+  --provider <名称>       注册服务适配器，支持 claude、grok。
   --email <邮箱>          注册邮箱，默认随机生成 @k9ray.com 邮箱。
   --domain <域名>         随机邮箱域名，默认 k9ray.com。
   --name <姓名>           显示名称，默认随机英文姓名。
+  --given-name <名字>     Grok 注册名字，可覆盖 --name 的第一部分。
+  --family-name <姓氏>    Grok 注册姓氏，可覆盖 --name 的其余部分。
+  --password <密码>       Grok 注册密码，默认随机生成。
   --birthday <MM/DD/YYYY> 新用户引导生日，默认 ${defaultClaudeBirthday()}。
   --proxy <代理地址>      上游认证代理，优先于 config/app.local.json。
+  --no-proxy              本次注册不使用代理。
   --chrome <路径>         Chrome 或 Chromium 可执行文件。
   --bridge-port <端口>    本地代理桥端口，默认随机。
   --debug-port <端口>     Chrome DevTools 端口，默认随机。

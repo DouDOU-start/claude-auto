@@ -1,7 +1,9 @@
 import { claudeRegistrationProvider } from "./claude/registration.js";
+import { grokRegistrationProvider } from "./grok/registration.js";
 
 const REGISTRATION_PROVIDERS = new Map([
   [claudeRegistrationProvider.id, claudeRegistrationProvider],
+  [grokRegistrationProvider.id, grokRegistrationProvider],
 ]);
 
 export function getRegistrationProvider(id = "claude") {

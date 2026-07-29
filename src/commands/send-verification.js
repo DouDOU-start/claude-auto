@@ -20,7 +20,7 @@ export async function runSendVerificationCommand(argv = process.argv.slice(2)) {
 
   const projectRoot = projectRootFrom(import.meta.url);
   const provider = getRegistrationProvider(args.provider);
-  const proxyUrl = resolveProxyUrl({ requestedProxy: args.proxy, projectRoot });
+  const proxyUrl = args.noProxy ? "" : resolveProxyUrl({ requestedProxy: args.proxy, projectRoot });
   const email = args.email || `test-${randomBytes(5).toString("hex")}@${args.domain || "k9ray.com"}`;
   const logDir = resolve(args.logDir || join(projectRoot, "logs"));
   const keepOpen = !args.noKeepOpen;
@@ -64,7 +64,7 @@ export async function runSendVerificationCommand(argv = process.argv.slice(2)) {
       debugPort: runtime.debugPort,
       bridge: {
         localProxy: runtime.bridge ? `http://${runtime.bridge.host}:${runtime.bridge.port}` : "",
-        upstreamProxy: maskProxy(proxyUrl),
+        upstreamProxy: proxyUrl ? maskProxy(proxyUrl) : "",
       },
       requests: runtime.cdp.interestingRequests(provider.interestingRequestMatcher),
     };
@@ -98,10 +98,11 @@ function printHelp() {
   node src/commands/send-verification.js [选项]
 
 选项：
-  --provider <名称>      注册服务适配器，当前支持 claude。
-  --email <邮箱>         接收验证链接的邮箱，默认随机生成。
+  --provider <名称>      注册服务适配器，支持 claude、grok。
+  --email <邮箱>         接收邮箱验证信息的邮箱，默认随机生成。
   --domain <域名>        随机邮箱域名，默认 k9ray.com。
   --proxy <代理地址>     上游认证代理，优先于 config/app.local.json。
+  --no-proxy             本次发送不使用代理。
   --chrome <路径>        Chrome 或 Chromium 可执行文件。
   --bridge-port <端口>   本地代理桥端口，默认随机。
   --debug-port <端口>    Chrome DevTools 端口，默认随机。

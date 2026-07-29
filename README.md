@@ -1,6 +1,6 @@
-# Claude 浏览器自动化工具
+# Claude 与 Grok 浏览器自动化工具
 
-基于 Node.js 22 和 Chrome DevTools Protocol 的 Claude 浏览器自动化工具。支持邮箱注册、代理浏览器、已有会话打开、终端聊天和 Anthropic 兼容 API。所有 Claude Web 请求都在真实 Chrome 页面上下文中发出，以保持浏览器 TLS 指纹和 Cloudflare 会话。
+基于 Node.js 22 和 Chrome DevTools Protocol 的浏览器自动化工具。注册流程支持 Claude 与 Grok；Claude 另外支持已有会话打开、终端聊天和 Anthropic 兼容 API。所有站点操作都在真实 Chromium 页面中完成。
 
 ## 免责声明
 
@@ -11,7 +11,8 @@
 - 每次运行创建全新 Chrome profile。
 - 通过本地代理桥接入带认证的上游代理。
 - 首次运行自动下载 Chromium 到本地 `browsers/`。
-- 支持交互式注册和邮箱组自动注册。
+- 支持 Claude Magic Link 与 Grok 邮箱安全码注册。
+- 支持交互式注册和 Outlook 邮箱组自动注册。
 - 支持 Microsoft Graph / IMAP 自动兜底读取邮件。
 - 支持使用已有 `sessionKey` 打开 Claude。
 - 支持动态代理失败重试。
@@ -80,7 +81,8 @@ Copy-Item .\config\app.example.json .\config\app.local.json
       "sessionKeys": ["sk-ant-sid02-..."],
       "model": "claude-sonnet-5",
       "effort": "medium"
-    }
+    },
+    "grok": {}
   },
   "api": {
     "host": "127.0.0.1",
@@ -185,17 +187,17 @@ npm run auto-register-mail -- `
 流程：
 
 1. 启动新的代理浏览器 profile。
-2. 向邮箱发送 Claude magic link。
+2. 通过服务适配器提交邮箱并发送验证信息。
 3. 通过 Graph 或 IMAP 读取邮件。
-4. 提取 `https://claude.ai/magic-link#...`。
-5. 在同一浏览器环境打开 magic link。
-6. 完成 onboarding。
-7. 输出并记录 `sessionKey`。
+4. Claude 提取 Magic Link；Grok 提取 6 位字母数字安全码。
+5. 在同一浏览器环境完成邮箱验证。
+6. 完成服务对应的新用户流程。
+7. 输出摘要，并将完整资料与会话写入已忽略的 `logs/`。
 
 主要参数：
 
 ```text
---provider <name>             注册服务适配器，当前支持 claude。
+--provider <name>             注册服务适配器，支持 claude、grok。
 --account <line>              单个邮箱组账号。
 --accounts-file <path>        批量账号文件。
 --mail-timeout <ms>           邮件轮询超时，默认 180000。
@@ -204,7 +206,11 @@ npm run auto-register-mail -- `
 --retry-delay <ms>            重试间隔，默认 3000。
 --registration-timeout <ms>   父进程超时，默认 600000。
 --devtools-timeout <ms>       DevTools 启动超时，默认 30000。
---login-timeout <ms>          Claude 登录页超时，默认 90000。
+--login-timeout <ms>          注册页超时，默认 90000。
+--given-name <name>           Grok 注册名字。
+--family-name <name>          Grok 注册姓氏。
+--password <password>         Grok 注册密码，默认随机生成。
+--no-proxy                    本次注册不使用代理。
 --keep-open                   成功后保留浏览器。
 --keep-open-on-error          仅在人工 onboarding 阻塞时保留浏览器。
 ```
@@ -229,15 +235,27 @@ npm run interactive -- --email test-demo@k9ray.com --name "Alex Morgan"
 npm run interactive -- --birthday "01/01/1995"
 ```
 
+Grok 交互式注册：
+
+```powershell
+npm run interactive -- --provider grok --email user@example.com --no-proxy
+```
+
+程序发送安全码后，在终端输入邮件中的六位安全码。邮件常见展示格式为 `ABC-123`，输入时保留或省略连字符都可以。
+
 主要参数：
 
 ```text
---provider <name>           注册服务适配器，当前支持 claude。
+--provider <name>           注册服务适配器，支持 claude、grok。
 --email <email>             注册邮箱，默认随机 @k9ray.com。
 --domain <domain>           随机邮箱域名，默认 k9ray.com。
 --name <name>               显示名称，默认随机英文名。
+--given-name <name>         Grok 注册名字。
+--family-name <name>        Grok 注册姓氏。
+--password <password>       Grok 注册密码，默认随机生成。
 --birthday <MM/DD/YYYY>     生日，默认 01/01/1995。
 --proxy <proxy-url>         代理覆盖。
+--no-proxy                  本次注册不使用代理。
 --chrome <path>             浏览器路径覆盖。
 --profile-dir <path>        Chrome profile 目录。
 --log-dir <path>            输出目录，默认 ./logs。
@@ -245,7 +263,7 @@ npm run interactive -- --birthday "01/01/1995"
 --keep-open-on-error        仅在人工 onboarding 阻塞时保留浏览器。
 ```
 
-## 发送 Magic Link
+## 发送邮箱验证信息
 
 ```powershell
 npm run send -- --email test-demo@k9ray.com
@@ -255,6 +273,12 @@ npm run send -- --email test-demo@k9ray.com
 
 ```powershell
 npm run send -- --domain k9ray.com
+```
+
+发送 Grok 邮箱安全码并保留浏览器：
+
+```powershell
+npm run send -- --provider grok --email user@example.com --no-proxy
 ```
 
 ## 使用 SessionKey
@@ -378,6 +402,8 @@ imap:   https://outlook.office.com/IMAP.AccessAsUser.All offline_access
 
 注册成功后会在终端输出 JSON，并将详细结果写入 `logs/`。
 
+Grok 的完整结果中包含随机生成或命令行指定的密码，以及 `sso` 会话 Cookie；这些文件和浏览器 profile 已被 Git 忽略，不应复制到公开位置。
+
 示例：
 
 ```json
@@ -400,6 +426,10 @@ imap:   https://outlook.office.com/IMAP.AccessAsUser.All offline_access
 
 代理隧道失败。更换代理或提高 `--max-attempts`。
 
+`407 Proxy Authentication Required`
+
+当前代理不允许访问 Grok。更换代理，或为直连环境传入 `--no-proxy`。
+
 `Phone verification required`
 
 Claude 要求手机号验证。使用 `--keep-open-on-error` 保留浏览器。
@@ -411,6 +441,10 @@ Claude 要求手机号验证。使用 `--keep-open-on-error` 保留浏览器。
 `Magic link email mismatch`
 
 magic link 对应邮箱与当前注册邮箱不一致。使用匹配的账号重新运行。
+
+`需要人工完成 Grok Turnstile 安全验证`
+
+使用 `--keep-open-on-error` 保留当前浏览器并在窗口中完成安全验证。程序不会绕过可见的 Turnstile 挑战。
 
 ## 开发
 
@@ -429,11 +463,12 @@ git status --short --ignored
 - `src/core/` 负责浏览器运行时、注册编排和命令行公共能力。
 - `src/mail/` 负责通用邮箱账号、Outlook Graph/IMAP 读取和轮询。
 - `src/providers/claude/` 只负责 Claude 登录、邮件匹配、新用户引导和会话提取。
-- `src/providers/index.js` 是注册服务适配器入口，后续接入 Grok 时在这里注册实现。
+- `src/providers/grok/` 负责 Grok 邮箱安全码、账号资料提交和会话提取。
+- `src/providers/index.js` 是注册服务适配器入口。
 - `src/commands/` 负责交互注册、批量注册、聊天和 API 等命令入口。
 - `src/tools/claude/` 保存 Claude 页面诊断工具，不参与正式注册流程。
 
-新增注册服务时的接口约定见 [注册服务适配器扩展指南](docs/注册服务适配器扩展指南.md)。
+新增注册服务时的接口约定见 [注册服务适配器扩展指南](docs/注册服务适配器扩展指南.md)，Grok 的真实浏览器走查结果见 [Grok 自动注册流程](docs/Grok自动注册流程.md)。
 
 ## 许可证
 

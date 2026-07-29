@@ -13,7 +13,8 @@
       ],
       "model": "claude-sonnet-5",
       "effort": "medium"
-    }
+    },
+    "grok": {}
   },
   "api": {
     "host": "127.0.0.1",

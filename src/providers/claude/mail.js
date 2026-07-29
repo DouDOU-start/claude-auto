@@ -28,7 +28,7 @@ export async function pollClaudeMagicLink({
     signal,
     tryRead: () => tryReadClaudeMagicLink({ account, since, signal }),
   });
-  return { ...result, magicLink: result.verificationUrl };
+  return { ...result, magicLink: result.verification };
 }
 
 export async function tryReadClaudeMagicLink({ account, since, signal }) {
@@ -38,7 +38,7 @@ export async function tryReadClaudeMagicLink({ account, since, signal }) {
     extractVerification: extractClaudeMagicLink,
     signal,
   });
-  return { ...result, magicLink: result.verificationUrl };
+  return { ...result, magicLink: result.verification };
 }
 
 function candidateTexts(text) {
