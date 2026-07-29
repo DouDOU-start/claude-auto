@@ -10,6 +10,8 @@ import { pollGrokVerificationCode } from "./mail.js";
 import { completeGrokOnboarding } from "./onboarding.js";
 import { createGrokProfile } from "./profile.js";
 import { extractGrokSession } from "./session.js";
+import { authorizeXaiDevice } from "./oauth.js";
+import { writeCliProxyXaiAuth } from "../../integrations/cliproxy/xai-auth.js";
 
 export const grokRegistrationProvider = Object.freeze({
   id: "grok",
@@ -65,6 +67,33 @@ export const grokRegistrationProvider = Object.freeze({
 
   extractSession(cdp) {
     return extractGrokSession(cdp);
+  },
+
+  async authorizeAfterRegistration(cdp, {
+    email,
+    projectRoot,
+    authDir,
+    proxyUrl,
+    signal,
+    updateProgress,
+  }) {
+    const token = await authorizeXaiDevice(cdp, {
+      proxyUrl,
+      signal,
+      updateProgress,
+    });
+    const exported = await writeCliProxyXaiAuth(token, {
+      projectRoot,
+      authDir,
+    });
+    return {
+      oauthAuthorized: true,
+      oauthEmail: exported.email || email,
+      oauthSubject: exported.subject,
+      oauthExpired: exported.expired,
+      cliproxyAuthPath: exported.outputPath,
+      cliproxyAuthPermissionsRestricted: exported.permissionsRestricted,
+    };
   },
 
   pollVerification({ account, since, timeoutMs, intervalMs, log, signal }) {

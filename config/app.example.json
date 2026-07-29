@@ -12,6 +12,11 @@
   "registration": {
     "provider": "claude"
   },
+  "cliproxy": {
+    "xaiOAuthAfterRegistration": true,
+    "xaiOAuthUseProxy": false,
+    "authDir": "./exports/cliproxy"
+  },
   "providers": {
     "claude": {
       "sessionKeys": [

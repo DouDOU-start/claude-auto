@@ -4,7 +4,11 @@ import { parseArgs, isCliEntry } from "../core/cli.js";
 import { projectRootFrom } from "../core/browser-runtime.js";
 import { registrationResultSummary, runRegistration } from "../core/registration-runner.js";
 import { waitWithSignal } from "../core/abort.js";
-import { resolveProxyUrl, resolveRegistrationProviderId } from "../config.js";
+import {
+  resolveCliProxyXaiOAuth,
+  resolveProxyUrl,
+  resolveRegistrationProviderId,
+} from "../config.js";
 import { parseMailAccountLine } from "../mail/account.js";
 import { getRegistrationProvider } from "../providers/index.js";
 
@@ -26,12 +30,31 @@ export async function runRegisterBatchCommand(argv = process.argv.slice(2)) {
     resolveRegistrationProviderId({ requestedProvider: args.provider, projectRoot }),
   );
   const proxyUrl = args.noProxy ? "" : resolveProxyUrl({ requestedProxy: args.proxy, projectRoot });
+  const authorization = provider.id === "grok"
+    ? resolveCliProxyXaiOAuth({
+        requestedEnabled: args.noXaiOauth ? false : args.xaiOauth ? true : undefined,
+        requestedUseProxy: args.noXaiOauthProxy
+          ? false
+          : args.xaiOauthProxy
+            ? true
+            : undefined,
+        requestedAuthDir: args.cliproxyAuthDir,
+        projectRoot,
+      })
+    : { enabled: false };
   const results = [];
 
   for (let index = 0; index < accounts.length; index += 1) {
     const account = accounts[index];
     console.log(`[账号 ${index + 1}/${accounts.length}] 正在注册 ${account.email}`);
-    results.push(await runWithRetries({ account, args, projectRoot, provider, proxyUrl }));
+    results.push(await runWithRetries({
+      account,
+      args,
+      projectRoot,
+      provider,
+      proxyUrl,
+      authorization,
+    }));
   }
 
   console.log(JSON.stringify({ completed: results.length, results }, null, 2));
@@ -58,7 +81,15 @@ async function runWithRetries(context) {
   throw lastError || new Error(`${context.account.email} 注册失败。`);
 }
 
-async function runSingleRegistration({ account, args, projectRoot, provider, proxyUrl, attempt }) {
+async function runSingleRegistration({
+  account,
+  args,
+  projectRoot,
+  provider,
+  proxyUrl,
+  authorization,
+  attempt,
+}) {
   const startedAt = new Date();
   const controller = new AbortController();
   const timeoutMs = Number(args.registrationTimeout || 600000);
@@ -89,6 +120,7 @@ async function runSingleRegistration({ account, args, projectRoot, provider, pro
       loginTimeout: Number(args.loginTimeout || 90000),
       keepOpen: Boolean(args.keepOpen),
       keepOpenOnError: Boolean(args.keepOpenOnError),
+      authorization,
       signal: controller.signal,
       getVerification: async () => {
         const verificationLabel = provider.verificationLabel || "邮箱验证信息";
@@ -202,6 +234,11 @@ function printHelp() {
   --proxy <代理地址>      可选代理覆盖。
   --no-proxy              本次注册不使用代理。
   --chrome <路径>         可选浏览器覆盖。
+  --xai-oauth             Grok 注册后执行 xAI OAuth 授权。
+  --no-xai-oauth          Grok 注册后不执行 xAI OAuth 授权。
+  --cliproxy-auth-dir <路径> CLIProxy 认证文件输出目录。
+  --xai-oauth-proxy       xAI OAuth 协议请求使用注册代理。
+  --no-xai-oauth-proxy    xAI OAuth 协议请求使用直连。
   --keep-open             注册后保留浏览器。
   --keep-open-on-error    需要人工处理时保留浏览器。
   --help                  显示帮助。

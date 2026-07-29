@@ -5,6 +5,7 @@ import { parseArgs, isCliEntry } from "../core/cli.js";
 import { projectRootFrom, waitForBrowserStop } from "../core/browser-runtime.js";
 import { registrationResultSummary, runRegistration } from "../core/registration-runner.js";
 import {
+  resolveCliProxyXaiOAuth,
   resolveProxyUrl,
   resolveRandomEmailDomain,
   resolveRegistrationProviderId,
@@ -24,6 +25,18 @@ export async function runRegisterCommand(argv = process.argv.slice(2)) {
     resolveRegistrationProviderId({ requestedProvider: args.provider, projectRoot }),
   );
   const proxyUrl = args.noProxy ? "" : resolveProxyUrl({ requestedProxy: args.proxy, projectRoot });
+  const authorization = provider.id === "grok"
+    ? resolveCliProxyXaiOAuth({
+        requestedEnabled: args.noXaiOauth ? false : args.xaiOauth ? true : undefined,
+        requestedUseProxy: args.noXaiOauthProxy
+          ? false
+          : args.xaiOauthProxy
+            ? true
+            : undefined,
+        requestedAuthDir: args.cliproxyAuthDir,
+        projectRoot,
+      })
+    : { enabled: false };
   const email =
     args.email ||
     `student-${randomBytes(5).toString("hex")}@${resolveRandomEmailDomain({
@@ -55,6 +68,7 @@ export async function runRegisterCommand(argv = process.argv.slice(2)) {
       loginTimeout: Number(args.loginTimeout || 90000),
       keepOpen: Boolean(args.keepOpen),
       keepOpenOnError: Boolean(args.keepOpenOnError),
+      authorization,
       getVerification: () => askNonEmpty(rl, provider.verificationPrompt || "邮箱验证信息："),
       onEvent: printRegistrationEvent,
     });
@@ -131,6 +145,11 @@ function printHelp() {
   --debug-port <端口>     Chrome DevTools 端口，默认随机。
   --profile-dir <路径>    Chrome 用户目录。
   --log-dir <路径>        结果目录，默认 ./logs。
+  --xai-oauth             注册后执行 xAI OAuth 授权。
+  --no-xai-oauth          注册后不执行 xAI OAuth 授权。
+  --cliproxy-auth-dir <路径> CLIProxy 认证文件输出目录。
+  --xai-oauth-proxy       xAI OAuth 协议请求使用注册代理。
+  --no-xai-oauth-proxy    xAI OAuth 协议请求使用直连。
   --keep-open             完成后保留 Chrome 和代理桥。
   --keep-open-on-error    仅在需要人工处理时保留 Chrome。
   --help                  显示帮助。

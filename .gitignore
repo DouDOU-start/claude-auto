@@ -1,5 +1,6 @@
 logs/
 profiles/
+exports/
 *.log
 browsers/
 config/app.local.json

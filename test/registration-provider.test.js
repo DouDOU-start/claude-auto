@@ -142,6 +142,46 @@ test("通用注册编排器按服务适配器接口执行并关闭资源", async
   }
 });
 
+test("通用注册编排器会在读取会话后执行可选授权钩子", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "registration-auth-test-"));
+  const calls = [];
+  const provider = {
+    ...createTestProvider(calls),
+    authorizeAfterRegistration: async (_cdp, context) => {
+      calls.push("执行授权");
+      assert.equal(context.authDir, "auths");
+      return {
+        oauthAuthorized: true,
+        oauthEmail: context.email,
+        cliproxyAuthPath: join(projectRoot, "auths", "xai-user@example.com.json"),
+      };
+    },
+  };
+
+  try {
+    const outcome = await runRegistration({
+      provider,
+      projectRoot,
+      email: "user@example.com",
+      profile: { displayName: "测试用户" },
+      authorization: { enabled: true, authDir: "auths" },
+      getVerification: async () => "ABC123",
+      openRuntime: async () => ({
+        cdp: { close() {} },
+        bridge: null,
+        profileDir: join(projectRoot, "profile"),
+        debugPort: 45678,
+        async close() {},
+      }),
+    });
+    assert.deepEqual(calls.slice(-2), ["提取会话", "执行授权"]);
+    assert.equal(outcome.result.oauthAuthorized, true);
+    assert.equal(outcome.result.oauthEmail, "user@example.com");
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
 function createTestProvider(calls) {
   return {
     id: "test",

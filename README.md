@@ -12,6 +12,7 @@
 - 通过本地代理桥接入带认证的上游代理。
 - 首次运行自动下载 Chromium 到本地 `browsers/`。
 - 支持 Claude Magic Link 与 Grok 邮箱安全码注册。
+- Grok 注册成功后可自动完成 xAI OAuth，并生成 CLIProxyAPI 认证文件。
 - 支持交互式注册和 Outlook 邮箱组自动注册。
 - 支持 Microsoft Graph / IMAP 自动兜底读取邮件。
 - 支持使用已有 `sessionKey` 打开 Claude。
@@ -65,7 +66,7 @@ config/app.local.json
 Copy-Item .\config\app.example.json .\config\app.local.json
 ```
 
-配置分为代理、浏览器、邮箱、注册、服务适配器和 API 六个区域：
+配置分为代理、浏览器、邮箱、注册、CLIProxy、服务适配器和 API 七个区域：
 
 ```json
 {
@@ -81,6 +82,11 @@ Copy-Item .\config\app.example.json .\config\app.local.json
   },
   "registration": {
     "provider": "claude"
+  },
+  "cliproxy": {
+    "xaiOAuthAfterRegistration": true,
+    "xaiOAuthUseProxy": false,
+    "authDir": "./exports/cliproxy"
   },
   "providers": {
     "claude": {
@@ -107,6 +113,9 @@ $env:CLAUDE_SESSION_KEY = "sk-ant-sid02-..."
 $env:APP_PROXY_URL = "http://user:password@host:port"
 $env:APP_RANDOM_EMAIL_DOMAIN = "mail.example.com"
 $env:APP_REGISTRATION_PROVIDER = "grok"
+$env:APP_CLIPROXY_XAI_OAUTH = "true"
+$env:APP_CLIPROXY_XAI_OAUTH_PROXY = "false"
+$env:APP_CLIPROXY_AUTH_DIR = ".\exports\cliproxy"
 ```
 
 配置优先级：
@@ -118,6 +127,16 @@ $env:APP_REGISTRATION_PROVIDER = "grok"
 `mail.randomDomain` 是未传入 `--email` 时使用的随机邮箱后缀。可以填写 `mail.example.com` 或 `@mail.example.com`；程序会自动去掉开头的 `@`。如果没有任何配置，则回退使用 `example.com`。
 
 `registration.provider` 是注册命令默认使用的服务，支持 `claude` 和 `grok`。命令行 `--provider` 可以临时覆盖该配置。
+
+`cliproxy.xaiOAuthAfterRegistration` 控制 Grok 注册成功后是否继续完成 xAI Device OAuth。默认启用，只影响 Grok，不影响 Claude。认证文件默认保存为：
+
+```text
+exports/cliproxy/xai-<邮箱>.json
+```
+
+该文件可直接上传到 CLIProxyAPI 管理端，或复制到 CLIProxyAPI 配置的 `auth-dir`。也可以把 `cliproxy.authDir` 直接配置为 CLIProxyAPI 的认证目录。程序会请求使用 `0600` 权限写入；Windows/WSL 挂载目录的实际访问控制由 Windows ACL 决定，摘要中的 `cliproxyAuthPermissionsRestricted` 会标明 POSIX 权限位是否已收紧。
+
+`cliproxy.xaiOAuthUseProxy` 只控制 discovery、设备码和 token 等 OAuth 协议请求；授权页面仍然使用注册浏览器现有的代理。默认直连是因为实测部分动态代理对 token 轮询连接不稳定。如果所在网络必须通过代理访问 `auth.x.ai`，可将其改为 `true`。
 
 代理链路：
 
@@ -204,7 +223,8 @@ npm run auto-register-mail -- `
 4. Claude 提取 Magic Link；Grok 提取 6 位字母数字安全码。
 5. 在同一浏览器环境完成邮箱验证。
 6. 完成服务对应的新用户流程。
-7. 输出摘要，并将完整资料与会话写入已忽略的 `logs/`。
+7. 读取服务登录会话。
+8. Grok 按配置完成 xAI OAuth，并输出 CLIProxyAPI 认证文件。
 
 主要参数：
 
@@ -223,6 +243,11 @@ npm run auto-register-mail -- `
 --family-name <name>          Grok 注册姓氏。
 --password <password>         Grok 注册密码，默认随机生成。
 --no-proxy                    本次注册不使用代理。
+--xai-oauth                   Grok 注册后执行 xAI OAuth。
+--no-xai-oauth                Grok 注册后不执行 xAI OAuth。
+--cliproxy-auth-dir <path>    CLIProxy 认证文件输出目录。
+--xai-oauth-proxy             OAuth 协议请求使用注册代理。
+--no-xai-oauth-proxy          OAuth 协议请求使用直连。
 --keep-open                   成功后保留浏览器。
 --keep-open-on-error          仅在人工 onboarding 阻塞时保留浏览器。
 ```
@@ -287,6 +312,11 @@ npm run interactive -- --no-proxy
 --chrome <path>             浏览器路径覆盖。
 --profile-dir <path>        Chrome profile 目录。
 --log-dir <path>            输出目录，默认 ./logs。
+--xai-oauth                 注册后执行 xAI OAuth。
+--no-xai-oauth              注册后不执行 xAI OAuth。
+--cliproxy-auth-dir <path>  CLIProxy 认证文件输出目录。
+--xai-oauth-proxy           OAuth 协议请求使用注册代理。
+--no-xai-oauth-proxy        OAuth 协议请求使用直连。
 --keep-open                 完成后保留浏览器和代理桥。
 --keep-open-on-error        仅在人工 onboarding 阻塞时保留浏览器。
 ```

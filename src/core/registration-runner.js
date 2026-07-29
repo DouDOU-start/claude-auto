@@ -5,7 +5,7 @@ import { maskProxy } from "../config.js";
 import { openBrowserRuntime, timestamp } from "./browser-runtime.js";
 import { throwIfAborted } from "./abort.js";
 
-const TOTAL_STEPS = 7;
+const BASE_TOTAL_STEPS = 7;
 
 export async function runRegistration({
   provider,
@@ -24,6 +24,7 @@ export async function runRegistration({
   keepOpenOnError = false,
   getVerification,
   getVerificationUrl,
+  authorization = { enabled: false },
   onEvent = () => {},
   signal,
   openRuntime = openBrowserRuntime,
@@ -34,6 +35,10 @@ export async function runRegistration({
   if (typeof verificationGetter !== "function") throw new Error("缺少邮箱验证信息获取方法。");
 
   const startedAt = Date.now();
+  const shouldAuthorize = Boolean(
+    authorization?.enabled && typeof provider.authorizeAfterRegistration === "function",
+  );
+  const totalSteps = BASE_TOTAL_STEPS + (shouldAuthorize ? 1 : 0);
   const actualProfileDir = resolve(
     profileDir ||
       join(
@@ -52,7 +57,7 @@ export async function runRegistration({
   let abortRuntime = null;
 
   const report = (step, message) => {
-    onEvent({ type: "progress", provider: provider.id, step, total: TOTAL_STEPS, message });
+    onEvent({ type: "progress", provider: provider.id, step, total: totalSteps, message });
   };
 
   try {
@@ -124,6 +129,18 @@ export async function runRegistration({
 
     report(7, "正在读取登录会话……");
     const session = await provider.extractSession(runtime.cdp, { signal });
+    let authorizationResult = {};
+    if (shouldAuthorize) {
+      report(8, "正在完成 xAI OAuth 授权并生成 CLIProxy 认证文件……");
+      authorizationResult = await provider.authorizeAfterRegistration(runtime.cdp, {
+        email,
+        projectRoot,
+        authDir: authorization.authDir,
+        proxyUrl: authorization.useProxy ? localProxyOf(runtime) : "",
+        signal,
+        updateProgress: (message) => report(8, message),
+      });
+    }
     const duration = elapsed(startedAt);
     const result = {
       provider: provider.id,
@@ -137,6 +154,7 @@ export async function runRegistration({
       localProxy: localProxyOf(runtime),
       upstreamProxy: proxyUrl ? maskProxy(proxyUrl) : "",
       ...session,
+      ...authorizationResult,
       outputPath,
       completedAt: new Date().toISOString(),
     };
@@ -189,6 +207,11 @@ export function registrationResultSummary(result) {
     profileDir: result.profileDir,
     debugPort: result.debugPort,
     outputPath: result.outputPath,
+    oauthAuthorized: result.oauthAuthorized,
+    oauthEmail: result.oauthEmail,
+    oauthExpired: result.oauthExpired,
+    cliproxyAuthPath: result.cliproxyAuthPath,
+    cliproxyAuthPermissionsRestricted: result.cliproxyAuthPermissionsRestricted,
   };
 }
 

@@ -45,6 +45,41 @@ export function resolveRegistrationProviderId({
   return provider;
 }
 
+export function resolveCliProxyXaiOAuth({
+  requestedEnabled,
+  requestedUseProxy,
+  requestedAuthDir = "",
+  projectRoot,
+  env = process.env,
+  defaultEnabled = true,
+}) {
+  const configured = readAppConfig(projectRoot).cliproxy || {};
+  const environmentEnabled = parseOptionalBoolean(
+    env.APP_CLIPROXY_XAI_OAUTH,
+    "APP_CLIPROXY_XAI_OAUTH",
+  );
+  const environmentUseProxy = parseOptionalBoolean(
+    env.APP_CLIPROXY_XAI_OAUTH_PROXY,
+    "APP_CLIPROXY_XAI_OAUTH_PROXY",
+  );
+  const enabled = requestedEnabled ?? environmentEnabled ??
+    (typeof configured.xaiOAuthAfterRegistration === "boolean"
+      ? configured.xaiOAuthAfterRegistration
+      : defaultEnabled);
+  const authDir = String(
+    requestedAuthDir ||
+      env.APP_CLIPROXY_AUTH_DIR ||
+      configured.authDir ||
+      join("exports", "cliproxy"),
+  ).trim();
+  if (!authDir) throw new Error("CLIProxy 认证文件目录不能为空。");
+  const useProxy = requestedUseProxy ?? environmentUseProxy ??
+    (typeof configured.xaiOAuthUseProxy === "boolean"
+      ? configured.xaiOAuthUseProxy
+      : false);
+  return { enabled, authDir, useProxy };
+}
+
 export function maskProxy(proxyUrl) {
   const parsed = new URL(proxyUrl);
   const auth = parsed.username || parsed.password ? "***@" : "";
@@ -72,4 +107,12 @@ function normalizeEmailDomain(value) {
     throw new Error(`随机邮箱后缀不是有效域名：${value}`);
   }
   return domain;
+}
+
+function parseOptionalBoolean(value, name) {
+  if (value === undefined || value === null || String(value).trim() === "") return undefined;
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  throw new Error(`${name} 必须是 true/false、1/0、yes/no 或 on/off。`);
 }

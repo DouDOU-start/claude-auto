@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadClaudeConfig, splitSessionKeys } from "../src/claude/config.js";
 import {
+  resolveCliProxyXaiOAuth,
   resolveProxyUrl,
   resolveRandomEmailDomain,
   resolveRegistrationProviderId,
@@ -26,6 +27,11 @@ test("统一 JSON 配置能够加载全部运行参数", async () => {
         browser: { path: "/browser", headless: false },
         mail: { randomDomain: "mail.example.com" },
         registration: { provider: "grok" },
+        cliproxy: {
+          xaiOAuthAfterRegistration: true,
+          xaiOAuthUseProxy: true,
+          authDir: "/tmp/cliproxy-auths",
+        },
         providers: {
           claude: { sessionKeys: ["abc"], model: "model", effort: "high" },
         },
@@ -45,6 +51,11 @@ test("统一 JSON 配置能够加载全部运行参数", async () => {
     assert.equal(config.apiKey, "key");
     assert.equal(resolveRandomEmailDomain({ projectRoot, env: {} }), "mail.example.com");
     assert.equal(resolveRegistrationProviderId({ projectRoot, env: {} }), "grok");
+    assert.deepEqual(resolveCliProxyXaiOAuth({ projectRoot, env: {} }), {
+      enabled: true,
+      authDir: "/tmp/cliproxy-auths",
+      useProxy: true,
+    });
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
   }
@@ -157,6 +168,61 @@ test("注册服务支持命令行、环境变量和统一配置优先级", async
     assert.throws(
       () => resolveRegistrationProviderId({ requestedProvider: "grok.com", projectRoot }),
       /格式无效/,
+    );
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLIProxy xAI OAuth 支持命令行、环境变量和统一配置优先级", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "cliproxy-config-test-"));
+  try {
+    await mkdir(join(projectRoot, "config"));
+    await writeFile(
+      join(projectRoot, "config", "app.local.json"),
+      JSON.stringify({
+        cliproxy: {
+          xaiOAuthAfterRegistration: false,
+          xaiOAuthUseProxy: false,
+          authDir: "configured-auths",
+        },
+      }),
+      "utf8",
+    );
+    assert.deepEqual(resolveCliProxyXaiOAuth({ projectRoot, env: {} }), {
+      enabled: false,
+      authDir: "configured-auths",
+      useProxy: false,
+    });
+    assert.deepEqual(resolveCliProxyXaiOAuth({
+      projectRoot,
+      env: {
+        APP_CLIPROXY_XAI_OAUTH: "true",
+        APP_CLIPROXY_XAI_OAUTH_PROXY: "true",
+        APP_CLIPROXY_AUTH_DIR: "environment-auths",
+      },
+    }), {
+      enabled: true,
+      authDir: "environment-auths",
+      useProxy: true,
+    });
+    assert.deepEqual(resolveCliProxyXaiOAuth({
+      projectRoot,
+      requestedEnabled: false,
+      requestedUseProxy: true,
+      requestedAuthDir: "argument-auths",
+      env: { APP_CLIPROXY_XAI_OAUTH: "true" },
+    }), {
+      enabled: false,
+      authDir: "argument-auths",
+      useProxy: true,
+    });
+    assert.throws(
+      () => resolveCliProxyXaiOAuth({
+        projectRoot,
+        env: { APP_CLIPROXY_XAI_OAUTH: "可能" },
+      }),
+      /必须是/,
     );
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
