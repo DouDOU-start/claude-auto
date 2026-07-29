@@ -9,7 +9,12 @@ export async function completeGrokOnboarding(cdp, {
   await fillInput(cdp, 'input[data-testid="givenName"]', givenName);
   await fillInput(cdp, 'input[data-testid="familyName"]', familyName);
   await fillInput(cdp, 'input[data-testid="password"]', password);
+  const beforeSubmit = await submissionState(cdp);
   await submitCompleteSignUp(cdp);
+  if (!beforeSubmit.turnstileReady) {
+    const turnstileState = await waitForTurnstile(cdp, signal);
+    if (!turnstileState.navigated) await submitCompleteSignUp(cdp);
+  }
 
   const deadline = Date.now() + 120000;
   let state = null;
@@ -77,6 +82,43 @@ async function submitCompleteSignUp(cdp) {
     })()
   `);
   if (!result?.ok) throw new Error(`未能提交 Grok 注册资料：${result?.reason || "未知原因"}`);
+}
+
+async function waitForTurnstile(cdp, signal) {
+  const deadline = Date.now() + 90000;
+  let state = null;
+  while (Date.now() < deadline) {
+    throwIfAborted(signal);
+    state = await submissionState(cdp).catch(() => null);
+    if (state?.navigated) return state;
+    if (state?.turnstileReady) return state;
+    const formError = detectFormError(state?.text || "");
+    if (formError) throw new Error(`Grok 账号创建失败：${formError}`);
+    await waitWithSignal(700, signal);
+  }
+
+  throwIfAborted(signal);
+  throw new Error(`Grok Turnstile 令牌等待超时。页面状态：${JSON.stringify(state)}`);
+}
+
+async function submissionState(cdp) {
+  return cdp.evaluate(`
+    (() => {
+      const token = document.querySelector('input[name="cf-turnstile-response"]');
+      const button = [...document.querySelectorAll("button")]
+        .find((item) => /Complete sign up/i.test(item.textContent || ""));
+      const form = button?.closest("form") || null;
+      return {
+        href: location.href,
+        text: document.body?.innerText?.slice(0, 3000) || "",
+        navigated: location.href.startsWith("https://grok.com/"),
+        turnstileReady: Boolean(token?.value),
+        turnstileTokenLength: token?.value?.length || 0,
+        buttonDisabled: Boolean(button?.disabled),
+        formValid: Boolean(form?.checkValidity())
+      };
+    })()
+  `);
 }
 
 async function onboardingState(cdp) {
