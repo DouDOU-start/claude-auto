@@ -7,11 +7,12 @@ import {
   waitForGrokLoginReady,
 } from "./login.js";
 import { pollGrokVerificationCode } from "./mail.js";
-import { completeGrokOnboarding } from "./onboarding.js";
+import { completeGrokAccountCreation } from "./onboarding.js";
 import { createGrokProfile } from "./profile.js";
 import { extractGrokSession } from "./session.js";
 import { authorizeXaiDevice } from "./oauth.js";
 import { writeCliProxyXaiAuth } from "../../integrations/cliproxy/xai-auth.js";
+import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -64,7 +65,7 @@ export const grokRegistrationProvider = Object.freeze({
   },
 
   completeOnboarding(cdp, { profile, signal, updateProgress }) {
-    return completeGrokOnboarding(cdp, { ...profile, signal, updateProgress });
+    return completeGrokAccountCreation(cdp, { ...profile, signal, updateProgress });
   },
 
   extractSession(cdp) {
@@ -93,19 +94,12 @@ export const grokRegistrationProvider = Object.freeze({
       });
     } finally {
       if (traceEnabled) {
-        const directory = join(projectRoot, "logs");
-        await mkdir(directory, { recursive: true, mode: 0o700 });
-        const stamp = new Date().toISOString()
-          .replace(/[-:]/g, "")
-          .replace(/\..+/, "")
-          .replace("T", "-");
-        const outputPath = join(directory, `grok-oauth-trace-${stamp}.json`);
-        await writeFile(outputPath, `${JSON.stringify({ email, trace }, null, 2)}\n`, {
-          encoding: "utf8",
-          mode: 0o600,
-          flag: "wx",
-        });
-        updateProgress(`xAI OAuth 脱敏抓包已保存：${outputPath}`);
+        try {
+          const outputPath = await writeGrokOAuthTrace({ projectRoot, email, trace });
+          updateProgress(`xAI OAuth 脱敏抓包已保存：${outputPath}`);
+        } catch (error) {
+          updateProgress(`xAI OAuth 脱敏抓包保存失败：${error.message}`);
+        }
       }
     }
     const exported = await writeCliProxyXaiAuth(token, {
@@ -153,3 +147,20 @@ export const grokRegistrationProvider = Object.freeze({
     return value.split(/\r?\n/).filter(Boolean).slice(-3).join(" ").slice(0, 800);
   },
 });
+
+async function writeGrokOAuthTrace({ projectRoot, email, trace }) {
+  const directory = join(projectRoot, "logs");
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const stamp = new Date().toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\..+/, "")
+    .replace("T", "-");
+  const unique = randomUUID().slice(0, 8);
+  const outputPath = join(directory, `grok-oauth-trace-${stamp}-${unique}.json`);
+  await writeFile(outputPath, `${JSON.stringify({ email, trace }, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+    flag: "wx",
+  });
+  return outputPath;
+}

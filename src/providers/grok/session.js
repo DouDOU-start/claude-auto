@@ -13,8 +13,8 @@ export async function extractGrokSession(cdp) {
     userId: cookieValue(cookies, "x-userid", "grok.com"),
     anonymousUserId: cookieValue(cookies, "x-anonuserid", "grok.com"),
     deviceId: cookieValue(cookies, "grok_device_id", "grok.com"),
-    sessionToken: cookieValue(cookies, "sso", "grok.com"),
-    sessionTokenRw: cookieValue(cookies, "sso-rw", "grok.com"),
+    sessionToken: cookieValue(cookies, "sso", "x.ai"),
+    sessionTokenRw: cookieValue(cookies, "sso-rw", "x.ai"),
     cookies: interesting,
   };
 }

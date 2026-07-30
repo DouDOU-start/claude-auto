@@ -228,3 +228,16 @@ test("CLIProxy xAI OAuth 支持命令行、环境变量和统一配置优先级"
     await rm(projectRoot, { recursive: true, force: true });
   }
 });
+
+test("CLIProxy xAI OAuth 默认复用注册代理出口", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "cliproxy-default-config-test-"));
+  try {
+    assert.deepEqual(resolveCliProxyXaiOAuth({ projectRoot, env: {} }), {
+      enabled: true,
+      authDir: join("exports", "cliproxy"),
+      useProxy: true,
+    });
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});

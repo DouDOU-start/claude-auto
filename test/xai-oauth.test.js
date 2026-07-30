@@ -20,6 +20,14 @@ import {
   cliProxyXaiCredentialFileName,
   writeCliProxyXaiAuth,
 } from "../src/integrations/cliproxy/xai-auth.js";
+import {
+  oauthFingerprints,
+  redactOAuthURL,
+  sanitizeOAuthFormText,
+  sanitizeOAuthHeaders,
+  sanitizeOAuthText,
+  sanitizeOAuthValue,
+} from "../src/providers/grok/oauth/redaction.js";
 
 test("xAI OAuth 使用浏览器 SSO Cookie 自动完成设备授权", async () => {
   const sequence = [];
@@ -227,6 +235,142 @@ test("xAI OAuth 协议页面受限时自动改用当前浏览器提交固定表�
     "请求令牌",
     "读取用户信息",
   ]);
+  assert.equal(token.access_token, "访问令牌");
+});
+
+test("xAI OAuth 浏览器确认后被服务端拒签时不重复申请设备码", async () => {
+  let deviceCodeRequests = 0;
+  let browserApprovals = 0;
+  const cdp = {
+    async send() {
+      return { cookies: [{ name: "sso", value: "登录态", domain: ".x.ai" }] };
+    },
+  };
+
+  await assert.rejects(
+    authorizeXaiDevice(cdp, {
+      retries: 3,
+      wait: async () => {},
+      browserApprove: async () => {
+        browserApprovals += 1;
+      },
+      request: async (url) => {
+        if (url === "https://accounts.x.ai/") {
+          return { status: 403, headers: {}, body: "Cloudflare", url };
+        }
+        if (url.endsWith("/.well-known/openid-configuration")) {
+          return {
+            status: 200,
+            body: {
+              device_authorization_endpoint: "https://auth.x.ai/oauth2/device/code",
+              token_endpoint: "https://auth.x.ai/oauth2/token",
+            },
+          };
+        }
+        if (url.endsWith("/oauth2/device/code")) {
+          deviceCodeRequests += 1;
+          return {
+            status: 200,
+            body: {
+              device_code: `设备码-${deviceCodeRequests}`,
+              user_code: "ABCD-EFGH",
+              verification_uri_complete:
+                "https://accounts.x.ai/oauth2/device?user_code=ABCD-EFGH",
+              expires_in: 1800,
+              interval: 5,
+            },
+          };
+        }
+        return {
+          status: 400,
+          body: { error: "invalid_grant", error_description: "Access denied" },
+        };
+      },
+    }),
+    /服务端拒绝.*账号可能受到 Device OAuth 授权限制/,
+  );
+
+  assert.equal(deviceCodeRequests, 1);
+  assert.equal(browserApprovals, 1);
+});
+
+test("xAI OAuth 协议确认后被拒签时切换浏览器再试一次", async () => {
+  let deviceCodeRequests = 0;
+  let tokenRequests = 0;
+  let browserApprovals = 0;
+  const cdp = {
+    async send() {
+      return { cookies: [{ name: "sso", value: "登录态", domain: ".x.ai" }] };
+    },
+  };
+
+  const token = await authorizeXaiDevice(cdp, {
+    retries: 3,
+    wait: async () => {},
+    browserApprove: async () => {
+      browserApprovals += 1;
+    },
+    request: async (url) => {
+      if (url === "https://accounts.x.ai/") {
+        return { status: 200, headers: {}, body: "账号页", url };
+      }
+      if (url.endsWith("/.well-known/openid-configuration")) {
+        return {
+          status: 200,
+          body: {
+            device_authorization_endpoint: "https://auth.x.ai/oauth2/device/code",
+            token_endpoint: "https://auth.x.ai/oauth2/token",
+          },
+        };
+      }
+      if (url.endsWith("/oauth2/device/code")) {
+        deviceCodeRequests += 1;
+        return {
+          status: 200,
+          body: {
+            device_code: `设备码-${deviceCodeRequests}`,
+            user_code: "ABCD-EFGH",
+            verification_uri_complete:
+              "https://accounts.x.ai/oauth2/device?user_code=ABCD-EFGH",
+            expires_in: 1800,
+            interval: 5,
+          },
+        };
+      }
+      if (url.includes("/oauth2/device?user_code=")) {
+        return { status: 200, headers: {}, body: "设备验证", url };
+      }
+      if (url.endsWith("/oauth2/device/verify")) {
+        return { status: 200, headers: {}, body: "device authorized", url };
+      }
+      if (url.endsWith("/oauth2/token")) {
+        tokenRequests += 1;
+        if (tokenRequests === 1) {
+          return {
+            status: 400,
+            body: { error: "invalid_grant", error_description: "Access denied" },
+          };
+        }
+        return {
+          status: 200,
+          body: {
+            access_token: "访问令牌",
+            refresh_token: "刷新令牌",
+            token_type: "Bearer",
+            expires_in: 3600,
+          },
+        };
+      }
+      if (url.endsWith("/oauth2/userinfo")) {
+        return { status: 200, body: { email: "user@example.com", sub: "用户编号" } };
+      }
+      throw new Error(`未处理的测试请求：${url}`);
+    },
+  });
+
+  assert.equal(deviceCodeRequests, 2);
+  assert.equal(tokenRequests, 2);
+  assert.equal(browserApprovals, 1);
   assert.equal(token.access_token, "访问令牌");
 });
 
@@ -452,6 +596,46 @@ test("xAI OAuth 服务端拒绝签发令牌时给出账号限制提示", async (
 
 test("JWT 身份解析遇到无效内容时安全返回空值", () => {
   assert.deepEqual(parseJwtIdentity("无效令牌"), { email: "", sub: "" });
+});
+
+test("xAI OAuth 抓包脱敏不会泄漏令牌、设备码和认证请求头", () => {
+  const secrets = {
+    access: "access-secret-value",
+    refresh: "refresh-secret-value",
+    identity: "identity-secret-value",
+    device: "device-secret-value",
+    user: "ABCD-EFGH",
+    cookie: "sso=cookie-secret-value",
+  };
+  const sanitized = {
+    url: redactOAuthURL(`https://accounts.x.ai/oauth2/device?user_code=${secrets.user}`),
+    headers: sanitizeOAuthHeaders({
+      Authorization: `Bearer ${secrets.access}`,
+      Cookie: secrets.cookie,
+      Accept: "application/json",
+    }),
+    form: sanitizeOAuthFormText(
+      `device_code=${secrets.device}&user_code=${secrets.user}&state=state-secret-value`,
+    ),
+    value: sanitizeOAuthValue({
+      access_token: secrets.access,
+      refresh_token: secrets.refresh,
+      id_token: secrets.identity,
+      device_code: secrets.device,
+      user_code: secrets.user,
+    }),
+    text: sanitizeOAuthText(`device_token=${secrets.device} user_code=${secrets.user}`),
+  };
+  const serialized = JSON.stringify(sanitized);
+
+  for (const secret of Object.values(secrets)) {
+    assert.equal(serialized.includes(secret), false);
+  }
+  assert.equal(sanitized.headers.Accept, "application/json");
+  assert.deepEqual(Object.keys(oauthFingerprints({
+    device_code: secrets.device,
+    user_code: secrets.user,
+  })).sort(), ["device_code", "user_code"]);
 });
 
 test("CLIProxy xAI 认证文件字段、名称和权限符合导入格式", async () => {

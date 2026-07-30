@@ -16,7 +16,8 @@ https://grok.com/
 → 重定向至 https://grok.com/
 → 从当前浏览器读取 sso/sso-rw 登录 Cookie
 → 申请 xAI OAuth 设备码
-→ 通过协议请求自动完成 verify/consent/approve
+→ 优先通过协议请求自动完成 verify/consent/approve
+→ 协议页面受限时由当前浏览器提交固定授权表单
 → 轮询取得 OAuth 令牌
 → 生成 CLIProxyAPI xAI 认证文件
 ```
@@ -72,7 +73,7 @@ cf_clearance
 
 ## xAI OAuth 授权
 
-注册完成后复用同一浏览器中的 `sso` 或 `sso-rw` 登录 Cookie，执行 OAuth 2.0 Device Authorization Grant。授权阶段不再导航浏览器授权页，也不再依赖页面按钮文字和前端脚本。
+注册完成后复用同一浏览器中的 `sso` 或 `sso-rw` 登录 Cookie，执行 OAuth 2.0 Device Authorization Grant。授权阶段优先通过协议请求完成；如果页面请求受到 Cloudflare 等限制，则在当前已登录浏览器中打开设备授权页，并按固定表单地址提交。两种方式都不依赖按钮文案或人工点击。
 
 协议参数：
 
@@ -97,11 +98,11 @@ grant_type: urn:ietf:params:oauth:grant-type:device_code
 → 必要时 GET https://auth.x.ai/oauth2/userinfo 补全邮箱
 ```
 
-程序为 `auth.x.ai` 和 `accounts.x.ai` 发送浏览器中对应的登录 Cookie，并维护授权过程中服务端返回的临时 Cookie。由于协议请求的 TLS 指纹或代理连接可能让账户首页预检跳转到登录页或直接返回 Cloudflare 403，预检结果只用于诊断，不会直接判定 Cookie 失效。协议页面受限时，程序会在同一个已登录 Chromium 页面中打开 `verification_uri_complete`，根据表单的目标地址识别 `verify` 与 `approve`，写入固定字段后直接提交；不会识别按钮文案，也不会依赖鼠标坐标或人工操作。整个 Device Flow 固定使用同一代理出口，并对 `429`、`slow_down`、`invalid_grant` 和授权状态不完整进行有限重试。
+程序为 `auth.x.ai` 和 `accounts.x.ai` 发送浏览器中对应的登录 Cookie，并维护授权过程中服务端返回的临时 Cookie。由于协议请求的 TLS 指纹或代理连接可能让账户首页预检跳转到登录页或直接返回 Cloudflare 403，预检结果只用于诊断，不会直接判定 Cookie 失效。协议页面受限时，程序会在同一个已登录 Chromium 页面中打开 `verification_uri_complete`，根据表单的目标地址识别 `verify` 与 `approve`，写入固定字段后直接提交；不会识别按钮文案，也不会依赖鼠标坐标或人工操作。默认配置下，协议请求和浏览器固定使用注册代理出口；显式关闭 OAuth 代理后，只有协议请求改为直连，浏览器回退仍沿用当前 Chromium 的出口。
 
 令牌轮询支持 `authorization_pending`、`slow_down`、`expired_token` 和 `access_denied`，短暂网络超时会有限重试。access token、refresh token、id token 和 SSO Cookie 不会打印到终端；CLIProxyAPI 认证文件只写入 OAuth Token，不写入 SSO Cookie。
 
-如果浏览器已经到达 `/oauth2/device/done`，但 Token 端点仍返回 `invalid_grant: Access denied`，说明 SSO 与自动授权步骤都已完成，是 xAI 拒绝为该账号签发 Device OAuth Token。此情况通常属于账号资格或风控限制，不应再按“浏览器登录状态失效”处理。
+如果协议确认后 Token 端点返回 `invalid_grant: Access denied`，程序会切换浏览器方式再试一次。如果浏览器已经到达 `/oauth2/device/done` 后仍返回该错误，说明 SSO 与自动授权步骤都已完成，是 xAI 拒绝为该账号签发 Device OAuth Token。此情况通常属于账号资格或风控限制，不应再按“浏览器登录状态失效”处理，也不会继续重复申请设备码。
 
 协议自动确认的实现思路参考了 [wenfxl/openai-cpa](https://github.com/wenfxl/openai-cpa) 的 xAI SSO Device Flow，并按当前项目的 Node.js、CDP、代理桥和 CLIProxyAPI 凭证格式重新适配。
 
@@ -142,13 +143,32 @@ exports/cliproxy/xai-<邮箱>.json
 {
   "cliproxy": {
     "xaiOAuthAfterRegistration": true,
-    "xaiOAuthUseProxy": false,
+    "xaiOAuthUseProxy": true,
     "authDir": "./exports/cliproxy"
   }
 }
 ```
 
-`xaiOAuthUseProxy` 影响 discovery、登录态校验、设备码、verify、consent、approve、token 和 userinfo 等全部 OAuth 协议请求。部分动态代理对 token 轮询连接不稳定，因此默认使用直连；如果注册登录态受出口 IP 约束，建议开启该选项，让授权请求继续使用注册代理。
+`xaiOAuthUseProxy` 影响 discovery、登录态校验、设备码、verify、consent、approve、token 和 userinfo 等全部 OAuth 协议请求，默认值为 `true`。如需临时排查代理轮询问题，可使用 `--no-xai-oauth-proxy` 让协议请求直连；浏览器回退仍使用当前 Chromium 的网络出口。
+
+## 脱敏抓包与故障排查
+
+注册过程中临时开启 OAuth 脱敏时间线：
+
+```powershell
+$env:APP_GROK_OAUTH_TRACE = "1"
+npm run interactive -- --provider grok
+```
+
+抓包文件写入 `logs/grok-oauth-trace-*.json`。令牌、设备码、Cookie 和认证请求头会被脱敏；保存失败只会输出进度提示，不会覆盖原始 OAuth 错误。
+
+也可以复用一个已登录的 Grok 浏览器目录单独重跑 Device OAuth：
+
+```powershell
+node src/tools/grok/oauth-trace.js --profile-dir <浏览器目录>
+```
+
+重点查看时间线中的“SSO 登录态预校验”“切换浏览器授权”“浏览器授权页面变化”和“令牌轮询响应”。如果最终是 `invalid_grant: Access denied`，应优先判断账号资格或风控限制，而不是继续重复授权。
 
 ## 使用方式
 

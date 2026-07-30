@@ -85,7 +85,7 @@ Copy-Item .\config\app.example.json .\config\app.local.json
   },
   "cliproxy": {
     "xaiOAuthAfterRegistration": true,
-    "xaiOAuthUseProxy": false,
+    "xaiOAuthUseProxy": true,
     "authDir": "./exports/cliproxy"
   },
   "providers": {
@@ -114,7 +114,7 @@ $env:APP_PROXY_URL = "http://user:password@host:port"
 $env:APP_RANDOM_EMAIL_DOMAIN = "mail.example.com"
 $env:APP_REGISTRATION_PROVIDER = "grok"
 $env:APP_CLIPROXY_XAI_OAUTH = "true"
-$env:APP_CLIPROXY_XAI_OAUTH_PROXY = "false"
+$env:APP_CLIPROXY_XAI_OAUTH_PROXY = "true"
 $env:APP_CLIPROXY_AUTH_DIR = ".\exports\cliproxy"
 ```
 
@@ -136,7 +136,9 @@ exports/cliproxy/xai-<邮箱>.json
 
 该文件可直接上传到 CLIProxyAPI 管理端，或复制到 CLIProxyAPI 配置的 `auth-dir`。也可以把 `cliproxy.authDir` 直接配置为 CLIProxyAPI 的认证目录。程序会请求使用 `0600` 权限写入；Windows/WSL 挂载目录的实际访问控制由 Windows ACL 决定，摘要中的 `cliproxyAuthPermissionsRestricted` 会标明 POSIX 权限位是否已收紧。
 
-`cliproxy.xaiOAuthUseProxy` 控制登录态校验、设备码、verify、consent、approve、token 和 userinfo 等全部 OAuth 请求。授权阶段优先复用注册浏览器中的 `sso/sso-rw` Cookie 走协议请求；如果 `accounts.x.ai` 被 Cloudflare 拦截，则自动在当前已登录浏览器中按固定的 `verify` 和 `approve` 表单地址提交，不依赖按钮文案、坐标或人工点击。默认直连是因为部分动态代理对 token 轮询连接不稳定；如果 xAI 登录态受出口 IP 约束，建议将其改为 `true`。
+`cliproxy.xaiOAuthUseProxy` 控制登录态校验、设备码、verify、consent、approve、token 和 userinfo 等 OAuth 协议请求，默认启用，使 OAuth 与注册浏览器复用同一代理出口。授权阶段优先使用浏览器中的 `sso/sso-rw` Cookie 走协议请求；如果 `accounts.x.ai` 被 Cloudflare 拦截，则自动在当前已登录浏览器中按固定的 `verify` 和 `approve` 表单地址提交，不依赖按钮文案、坐标或人工点击。显式关闭该选项只会让协议请求直连，浏览器回退仍沿用当前 Chromium 的网络出口。
+
+Grok 注册、OAuth 回退和抓包排障的详细说明见 [Grok 自动注册流程](docs/Grok自动注册流程.md)。
 
 代理链路：
 
@@ -466,7 +468,7 @@ imap:   https://outlook.office.com/IMAP.AccessAsUser.All offline_access
 
 注册成功后会在终端输出 JSON，并将详细结果写入 `logs/`。
 
-Grok 的完整结果中包含随机生成或命令行指定的密码，以及 `sso` 会话 Cookie；这些文件和浏览器 profile 已被 Git 忽略，不应复制到公开位置。
+Grok 的完整结果中包含随机生成或命令行指定的密码、顶层 `sessionToken`/`sessionTokenRw` 字段，以及 `cookies` 数组中的原始会话 Cookie；这些文件和浏览器 profile 已被 Git 忽略，不应复制到公开位置。
 
 示例：
 
@@ -509,6 +511,10 @@ magic link 对应邮箱与当前注册邮箱不一致。使用匹配的账号重
 `需要人工完成 Grok Turnstile 安全验证`
 
 使用 `--keep-open-on-error` 保留当前浏览器并在窗口中完成安全验证。程序不会绕过可见的 Turnstile 挑战。
+
+`invalid_grant: Access denied`
+
+浏览器已完成授权确认，但 xAI 拒绝为该账号签发 Device OAuth Token，通常属于账号资格或风控限制。程序不会在浏览器确认后重复申请三次设备码。需要排查完整流程时，可按 [Grok 自动注册流程](docs/Grok自动注册流程.md) 中的脱敏抓包说明操作。
 
 ## 开发
 

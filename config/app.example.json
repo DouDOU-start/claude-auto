@@ -14,7 +14,7 @@
   },
   "cliproxy": {
     "xaiOAuthAfterRegistration": true,
-    "xaiOAuthUseProxy": false,
+    "xaiOAuthUseProxy": true,
     "authDir": "./exports/cliproxy"
   },
   "providers": {

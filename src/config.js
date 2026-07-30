@@ -76,7 +76,7 @@ export function resolveCliProxyXaiOAuth({
   const useProxy = requestedUseProxy ?? environmentUseProxy ??
     (typeof configured.xaiOAuthUseProxy === "boolean"
       ? configured.xaiOAuthUseProxy
-      : false);
+      : true);
   return { enabled, authDir, useProxy };
 }
 

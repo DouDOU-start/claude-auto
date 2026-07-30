@@ -1,15 +1,22 @@
 import { throwIfAborted, waitWithSignal } from "../../core/abort.js";
+import { dispatchGrokClick, fillGrokInput } from "./browser-actions.js";
 
-export async function completeGrokOnboarding(cdp, {
+export async function completeGrokAccountCreation(cdp, {
   givenName,
   familyName,
   password,
   signal,
   updateProgress = () => {},
 }) {
-  await fillInput(cdp, 'input[data-testid="givenName"]', givenName);
-  await fillInput(cdp, 'input[data-testid="familyName"]', familyName);
-  await fillInput(cdp, 'input[data-testid="password"]', password);
+  await fillGrokInput(cdp, 'input[data-testid="givenName"]', givenName, {
+    missingMessage: '未找到 Grok 注册输入框：input[data-testid="givenName"]',
+  });
+  await fillGrokInput(cdp, 'input[data-testid="familyName"]', familyName, {
+    missingMessage: '未找到 Grok 注册输入框：input[data-testid="familyName"]',
+  });
+  await fillGrokInput(cdp, 'input[data-testid="password"]', password, {
+    missingMessage: '未找到 Grok 注册输入框：input[data-testid="password"]',
+  });
   const beforeSubmit = await waitForSubmitReady(cdp, signal);
   await clickCompleteSignUp(cdp);
   if (!beforeSubmit.turnstileReady) {
@@ -46,31 +53,6 @@ export async function completeGrokOnboarding(cdp, {
   throw new Error(`Grok 注册后未能进入首页。页面状态：${JSON.stringify(state)}`);
 }
 
-async function fillInput(cdp, selector, value) {
-  const documentNode = await cdp.send("DOM.getDocument", { depth: -1, pierce: true });
-  const inputNode = await cdp.send("DOM.querySelector", {
-    nodeId: documentNode.root.nodeId,
-    selector,
-  });
-  if (!inputNode.nodeId) throw new Error(`未找到 Grok 注册输入框：${selector}`);
-  await cdp.send("DOM.focus", { nodeId: inputNode.nodeId });
-  await cdp.send("Input.dispatchKeyEvent", {
-    type: "keyDown",
-    key: "a",
-    code: "KeyA",
-    modifiers: 2,
-  });
-  await cdp.send("Input.dispatchKeyEvent", {
-    type: "keyUp",
-    key: "a",
-    code: "KeyA",
-    modifiers: 2,
-  });
-  await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Backspace", code: "Backspace" });
-  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Backspace", code: "Backspace" });
-  await cdp.send("Input.insertText", { text: String(value) });
-}
-
 export async function clickCompleteSignUp(cdp) {
   const target = await cdp.evaluate(`
     (() => {
@@ -101,26 +83,10 @@ export async function clickCompleteSignUp(cdp) {
   if (!target?.ok) {
     throw new Error(`未能提交 Grok 注册资料：${target?.reason || "未知原因"}`);
   }
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mouseMoved",
-    x: target.x,
-    y: target.y,
-  });
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mousePressed",
-    x: target.x,
-    y: target.y,
-    button: "left",
-    clickCount: 1,
-  });
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mouseReleased",
-    x: target.x,
-    y: target.y,
-    button: "left",
-    clickCount: 1,
-  });
+  await dispatchGrokClick(cdp, target);
 }
+
+export const completeGrokOnboarding = completeGrokAccountCreation;
 
 async function waitForSubmitReady(cdp, signal, {
   requireTurnstile = false,

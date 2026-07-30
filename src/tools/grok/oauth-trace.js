@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { parseArgs } from "../../core/cli.js";
@@ -9,6 +8,15 @@ import {
   oauthHttpRequest,
   XAI_DEVICE_GRANT_TYPE,
 } from "../../providers/grok/oauth.js";
+import {
+  isXaiRelatedURL as isInterestingURL,
+  oauthFingerprints,
+  redactOAuthURL as sanitizeURL,
+  sanitizeOAuthFormText as sanitizeFormText,
+  sanitizeOAuthHeaders as sanitizeHeaders,
+  sanitizeOAuthText as sanitizeText,
+  sanitizeOAuthValue as sanitizeValue,
+} from "../../providers/grok/oauth/redaction.js";
 
 const projectRoot = resolve(
   new URL("../../..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"),
@@ -189,109 +197,6 @@ function pushEvent(trace, source, action, detail = {}) {
     action,
     ...detail,
   });
-}
-
-function isInterestingURL(raw) {
-  try {
-    const host = new URL(raw).hostname.toLowerCase();
-    return host === "x.ai" || host.endsWith(".x.ai") || host === "grok.com" || host.endsWith(".grok.com");
-  } catch {
-    return false;
-  }
-}
-
-function sanitizeURL(raw) {
-  try {
-    const parsed = new URL(raw);
-    for (const key of [...parsed.searchParams.keys()]) {
-      if (/code|token|state|session|challenge/i.test(key)) parsed.searchParams.set(key, "[已脱敏]");
-    }
-    return parsed.toString();
-  } catch {
-    return sanitizeText(raw);
-  }
-}
-
-function sanitizeHeaders(headers = {}) {
-  const result = {};
-  for (const [key, value] of Object.entries(headers || {})) {
-    result[key] = /authorization|cookie|token|signature|challenge/i.test(key)
-      ? "[已脱敏]"
-      : sanitizeText(String(value));
-  }
-  return result;
-}
-
-function sanitizeFormText(value) {
-  if (!value) return "";
-  try {
-    const params = new URLSearchParams(value);
-    for (const key of [...params.keys()]) {
-      if (/code|token|state|session|challenge/i.test(key)) params.set(key, "[已脱敏]");
-    }
-    return params.toString();
-  } catch {
-    return sanitizeText(value);
-  }
-}
-
-function sanitizeValue(value, key = "") {
-  if (/access_token|refresh_token|id_token|device_code|user_code|code_verifier|code_challenge|cookie|sso/i.test(key)) {
-    return "[已脱敏]";
-  }
-  if (Array.isArray(value)) return value.map((item) => sanitizeValue(item));
-  if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([itemKey, item]) => [itemKey, sanitizeValue(item, itemKey)]));
-  }
-  return typeof value === "string" ? sanitizeText(value) : value;
-}
-
-function oauthFingerprints(value) {
-  const result = {};
-  const collect = (item, key = "") => {
-    if (item === undefined || item === null) return;
-    if (Array.isArray(item)) {
-      for (const child of item) collect(child);
-      return;
-    }
-    if (typeof item === "object") {
-      for (const [childKey, child] of Object.entries(item)) collect(child, childKey);
-      return;
-    }
-    const text = String(item);
-    if (/^(?:user_code|device_code)$/i.test(key) && text) {
-      result[key.toLowerCase()] = fingerprint(text);
-      return;
-    }
-    if (typeof item !== "string") return;
-    try {
-      const parsed = new URL(item);
-      for (const name of ["user_code", "device_code"]) {
-        const secret = parsed.searchParams.get(name);
-        if (secret) result[name] = fingerprint(secret);
-      }
-    } catch {}
-    try {
-      const params = new URLSearchParams(item);
-      for (const name of ["user_code", "device_code"]) {
-        const secret = params.get(name);
-        if (secret) result[name] = fingerprint(secret);
-      }
-    } catch {}
-  };
-  collect(value);
-  return result;
-}
-
-function fingerprint(value) {
-  return createHash("sha256").update(String(value)).digest("hex").slice(0, 12);
-}
-
-function sanitizeText(value) {
-  return String(value || "")
-    .replace(/((?:access|refresh|id|device)[_-]?token["'=:\s]+)[^\s"'&]+/gi, "$1[已脱敏]")
-    .replace(/((?:user_code|device_code|code|state)=)[^&\s]+/gi, "$1[已脱敏]")
-    .slice(0, 4000);
 }
 
 async function writeTrace(trace) {
