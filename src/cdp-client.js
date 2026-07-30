@@ -1,16 +1,19 @@
-export async function findPage(debugPort, { urlIncludes = "" } = {}) {
-  const targets = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
-  const page =
-    (urlIncludes
+export async function findPage(debugPort, { urlIncludes = "", timeoutMs = 5000 } = {}) {
+  const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
+  do {
+    const targets = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
+    const page = urlIncludes
       ? targets.find(
           (target) => target.type === "page" && String(target.url || "").includes(urlIncludes),
         )
-      : null) ||
-    targets.find((target) => target.type === "page");
-  if (!page?.webSocketDebuggerUrl) {
-    throw new Error(`DevTools 端口 ${debugPort} 上没有可用的页面目标。`);
-  }
-  return page;
+      : targets.find((target) => target.type === "page");
+    if (page?.webSocketDebuggerUrl) return page;
+    if (Date.now() >= deadline) break;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+  } while (true);
+
+  const targetDescription = urlIncludes ? `匹配 ${JSON.stringify(urlIncludes)} 的` : "可用的";
+  throw new Error(`DevTools 端口 ${debugPort} 上没有${targetDescription}页面目标。`);
 }
 
 export function findClaudePage(debugPort) {
@@ -23,6 +26,7 @@ export class CdpClient {
     this.nextId = 1;
     this.pending = new Map();
     this.requests = new Map();
+    this.listeners = new Map();
     this.ws = null;
   }
 
@@ -82,6 +86,17 @@ export class CdpClient {
     return this.interestingRequests(/send_magic_link|login_methods|auth/i);
   }
 
+  on(method, listener) {
+    if (typeof listener !== "function") throw new Error("CDP 事件监听器必须是函数。");
+    const listeners = this.listeners.get(method) || new Set();
+    listeners.add(listener);
+    this.listeners.set(method, listeners);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) this.listeners.delete(method);
+    };
+  }
+
   #rejectPending(error) {
     for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
@@ -98,6 +113,15 @@ export class CdpClient {
         pending.resolve(data.result);
       }
       return;
+    }
+
+    const listeners = this.listeners.get(data.method);
+    if (listeners) {
+      for (const listener of listeners) {
+        try {
+          listener(data.params || {});
+        } catch {}
+      }
     }
 
     if (data.method === "Network.requestWillBeSent") {

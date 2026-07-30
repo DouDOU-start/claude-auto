@@ -20,21 +20,41 @@ export async function authorizeXaiDevice(cdp, {
   signal,
   updateProgress = () => {},
   request = oauthHttpRequest,
+  trace = () => {},
 } = {}) {
   updateProgress("正在申请 xAI OAuth 设备授权……");
+  emitTrace(trace, "服务发现开始", { url: XAI_OAUTH_DISCOVERY_URL });
   const discovery = await discoverXaiOAuth({ proxyUrl, signal, request });
+  emitTrace(trace, "服务发现完成", discovery);
   const deviceCode = await requestXaiDeviceCode({ discovery, proxyUrl, signal, request });
+  emitTrace(trace, "设备码申请完成", {
+    verification_uri: redactOAuthURL(deviceCode.verification_uri),
+    verification_uri_complete: redactOAuthURL(deviceCode.verification_uri_complete),
+    interval: Number(deviceCode.interval || 0),
+    expires_in: Number(deviceCode.expires_in || 0),
+  });
   const verificationUrl = validateXaiOAuthEndpoint(
     deviceCode.verification_uri_complete || deviceCode.verification_uri,
     "verification_uri",
   );
 
+  let releasePendingPoll;
+  let authorizationError = null;
+  const authorizationSettled = new Promise((resolveAuthorization) => {
+    releasePendingPoll = resolveAuthorization;
+  });
   let token = null;
   let pollError = null;
   const polling = pollXaiOAuthToken(deviceCode, {
     proxyUrl,
     signal,
     request,
+    trace,
+    async onAuthorizationPending() {
+      emitTrace(trace, "令牌轮询已暂停，等待页面完成授权", {});
+      await authorizationSettled;
+      if (authorizationError) throw authorizationError;
+    },
   }).then(
     (value) => {
       token = value;
@@ -47,12 +67,22 @@ export async function authorizeXaiDevice(cdp, {
   );
 
   updateProgress("正在当前浏览器中确认 xAI OAuth 授权……");
+  emitTrace(trace, "打开设备授权页", { url: redactOAuthURL(verificationUrl) });
   await cdp.send("Page.navigate", { url: verificationUrl });
-  await driveXaiAuthorizationPage(cdp, {
-    userCode: deviceCode.user_code,
-    signal,
-    shouldStop: () => Boolean(token || pollError),
-  });
+  try {
+    await driveXaiAuthorizationPage(cdp, {
+      userCode: deviceCode.user_code,
+      signal,
+      shouldStop: () => Boolean(token || pollError),
+      trace,
+    });
+    releasePendingPoll();
+  } catch (error) {
+    authorizationError = error;
+    releasePendingPoll();
+    await polling;
+    throw error;
+  }
 
   await polling;
   if (pollError) throw pollError;
@@ -129,6 +159,8 @@ export async function pollXaiOAuthToken(deviceCode, {
   wait = waitWithSignal,
   now = () => Date.now(),
   maxDurationMs = MAX_POLL_DURATION_MS,
+  trace = () => {},
+  onAuthorizationPending = async () => {},
 } = {}) {
   if (!deviceCode?.device_code || !deviceCode?.token_endpoint) {
     throw new Error("xAI OAuth 设备码或令牌端点缺失。");
@@ -144,6 +176,7 @@ export async function pollXaiOAuthToken(deviceCode, {
     expiresInMs > 0 ? expiresInMs : maxDurationMs,
   );
   let firstAttempt = true;
+  let attempt = 0;
   let transientFailures = 0;
 
   while (firstAttempt || now() < deadline) {
@@ -151,6 +184,8 @@ export async function pollXaiOAuthToken(deviceCode, {
     if (!firstAttempt) await wait(intervalMs, signal);
     firstAttempt = false;
     throwIfAborted(signal);
+    attempt += 1;
+    emitTrace(trace, "令牌轮询请求", { attempt, interval_ms: intervalMs });
 
     let response;
     try {
@@ -168,12 +203,25 @@ export async function pollXaiOAuthToken(deviceCode, {
       transientFailures = 0;
     } catch (error) {
       transientFailures += 1;
+      emitTrace(trace, "令牌轮询网络错误", {
+        attempt,
+        transient_failures: transientFailures,
+        message: String(error.message || error),
+      });
       if (transientFailures >= 3) {
         throw new Error(`xAI OAuth 令牌轮询网络失败：${error.message}`);
       }
       continue;
     }
     const value = response.body || {};
+    emitTrace(trace, "令牌轮询响应", {
+      attempt,
+      status: response.status,
+      error: String(value.error || ""),
+      error_description: String(value.error_description || ""),
+      has_access_token: Boolean(value.access_token),
+      has_refresh_token: Boolean(value.refresh_token),
+    });
     if (value.access_token) {
       const identity = parseJwtIdentity(value.id_token);
       return {
@@ -189,6 +237,7 @@ export async function pollXaiOAuthToken(deviceCode, {
 
     switch (value.error) {
       case "authorization_pending":
+        await onAuthorizationPending({ attempt }, signal);
         continue;
       case "slow_down":
         intervalMs += DEFAULT_POLL_INTERVAL_MS;
@@ -307,6 +356,7 @@ async function driveXaiAuthorizationPage(cdp, {
   userCode,
   signal,
   shouldStop = () => false,
+  trace = () => {},
 }) {
   const deadline = Date.now() + 180000;
   let lastState = null;
@@ -321,6 +371,13 @@ async function driveXaiAuthorizationPage(cdp, {
     if (!lastState) {
       await waitWithSignal(500, signal);
       continue;
+    }
+    if (lastState.href !== currentHref) {
+      emitTrace(trace, "授权页面变化", {
+        href: redactOAuthURL(lastState.href),
+        title: lastState.title,
+        text: redactOAuthText(lastState.text).slice(0, 1000),
+      });
     }
     if (lastState.success) return;
     if (lastState.denied) throw new Error("xAI OAuth 授权页面显示授权已拒绝。");
@@ -337,6 +394,7 @@ async function driveXaiAuthorizationPage(cdp, {
     }
 
     if (lastState.codeInputVisible && !lastState.codeInputValue && userCode) {
+      emitTrace(trace, "填写设备码", {});
       await fillVisibleCodeInput(cdp, userCode);
       lastAction = "填写设备码";
       await waitWithSignal(500, signal);
@@ -349,6 +407,10 @@ async function driveXaiAuthorizationPage(cdp, {
     }
     const action = await clickAuthorizationButton(cdp);
     if (action?.clicked) {
+      emitTrace(trace, "点击授权按钮", {
+        text: action.text,
+        forced_action: Boolean(action.forcedAction),
+      });
       actedHrefs.add(lastState.href);
       lastAction = action.text;
       await waitWithSignal(1000, signal);
@@ -366,6 +428,37 @@ async function driveXaiAuthorizationPage(cdp, {
       lastAction,
     })}`,
   );
+}
+
+function emitTrace(trace, action, detail) {
+  try {
+    trace({
+      at: new Date().toISOString(),
+      action,
+      ...detail,
+    });
+  } catch {}
+}
+
+function redactOAuthURL(value) {
+  if (!value) return "";
+  try {
+    const parsed = new URL(String(value));
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (/code|token|state|session|challenge/i.test(key)) {
+        parsed.searchParams.set(key, "[已脱敏]");
+      }
+    }
+    return parsed.toString();
+  } catch {
+    return redactOAuthText(value);
+  }
+}
+
+function redactOAuthText(value) {
+  return String(value || "")
+    .replace(/\b[A-Z0-9]{4}-[A-Z0-9]{4}\b/gi, "[设备码已脱敏]")
+    .replace(/((?:access|refresh|id|device)[_-]?token["'=:\s]+)[^\s"'&]+/gi, "$1[已脱敏]");
 }
 
 function xaiAuthorizationPageState(cdp) {
@@ -434,10 +527,27 @@ async function clickAuthorizationButton(cdp) {
       if (!button) return null;
       const text = (button.innerText || button.value || button.getAttribute("aria-label") || "")
         .replace(/\s+/g, " ").trim();
+      let forcedAction = false;
+      if (/^(?:authorize|approve|allow|confirm|yes(?:,? (?:authorize|allow|approve))?)$/i.test(text)) {
+        const form = button.form || button.closest("form");
+        if (form) {
+          const actionFields = [...form.elements].filter((item) => item.name === "action");
+          for (const field of actionFields) field.value = "allow";
+          if (!actionFields.length) {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "action";
+            input.value = "allow";
+            form.appendChild(input);
+          }
+          forcedAction = true;
+        }
+      }
       button.scrollIntoView({ block: "center", inline: "center" });
       const rect = button.getBoundingClientRect();
       return {
         text,
+        forcedAction,
         x: rect.left + rect.width / 2,
         y: rect.top + rect.height / 2
       };
@@ -463,7 +573,11 @@ async function clickAuthorizationButton(cdp) {
     button: "left",
     clickCount: 1,
   });
-  return { clicked: true, text: target.text };
+  return {
+    clicked: true,
+    text: target.text,
+    forcedAction: Boolean(target.forcedAction),
+  };
 }
 
 class HttpsProxyAgent extends https.Agent {

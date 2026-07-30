@@ -91,6 +91,7 @@ test("xAI OAuth 令牌轮询支持等待、降速与成功响应", async () => {
   ];
   const waits = [];
   const forms = [];
+  const pendingAttempts = [];
   const token = await pollXaiOAuthToken({
     device_code: "设备码",
     token_endpoint: "https://auth.x.ai/oauth2/token",
@@ -102,8 +103,10 @@ test("xAI OAuth 令牌轮询支持等待、降速与成功响应", async () => {
       return responses.shift();
     },
     wait: async (milliseconds) => waits.push(milliseconds),
+    onAuthorizationPending: async ({ attempt }) => pendingAttempts.push(attempt),
   });
   assert.deepEqual(waits, [5000, 10000]);
+  assert.deepEqual(pendingAttempts, [1]);
   assert.equal(forms[0].grant_type, XAI_DEVICE_GRANT_TYPE);
   assert.equal(forms[0].client_id, XAI_OAUTH_CLIENT_ID);
   assert.equal(token.email, "user@example.com");

@@ -12,6 +12,8 @@ import { createGrokProfile } from "./profile.js";
 import { extractGrokSession } from "./session.js";
 import { authorizeXaiDevice } from "./oauth.js";
 import { writeCliProxyXaiAuth } from "../../integrations/cliproxy/xai-auth.js";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 export const grokRegistrationProvider = Object.freeze({
   id: "grok",
@@ -77,11 +79,35 @@ export const grokRegistrationProvider = Object.freeze({
     signal,
     updateProgress,
   }) {
-    const token = await authorizeXaiDevice(cdp, {
-      proxyUrl,
-      signal,
-      updateProgress,
-    });
+    const traceEnabled = /^(?:1|true|yes|on)$/i.test(
+      String(process.env.APP_GROK_OAUTH_TRACE || "").trim(),
+    );
+    const trace = [];
+    let token;
+    try {
+      token = await authorizeXaiDevice(cdp, {
+        proxyUrl,
+        signal,
+        updateProgress,
+        trace: traceEnabled ? (event) => trace.push(event) : undefined,
+      });
+    } finally {
+      if (traceEnabled) {
+        const directory = join(projectRoot, "logs");
+        await mkdir(directory, { recursive: true, mode: 0o700 });
+        const stamp = new Date().toISOString()
+          .replace(/[-:]/g, "")
+          .replace(/\..+/, "")
+          .replace("T", "-");
+        const outputPath = join(directory, `grok-oauth-trace-${stamp}.json`);
+        await writeFile(outputPath, `${JSON.stringify({ email, trace }, null, 2)}\n`, {
+          encoding: "utf8",
+          mode: 0o600,
+          flag: "wx",
+        });
+        updateProgress(`xAI OAuth 脱敏抓包已保存：${outputPath}`);
+      }
+    }
     const exported = await writeCliProxyXaiAuth(token, {
       projectRoot,
       authDir,
