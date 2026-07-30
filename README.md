@@ -136,7 +136,7 @@ exports/cliproxy/xai-<邮箱>.json
 
 该文件可直接上传到 CLIProxyAPI 管理端，或复制到 CLIProxyAPI 配置的 `auth-dir`。也可以把 `cliproxy.authDir` 直接配置为 CLIProxyAPI 的认证目录。程序会请求使用 `0600` 权限写入；Windows/WSL 挂载目录的实际访问控制由 Windows ACL 决定，摘要中的 `cliproxyAuthPermissionsRestricted` 会标明 POSIX 权限位是否已收紧。
 
-`cliproxy.xaiOAuthUseProxy` 只控制 discovery、设备码和 token 等 OAuth 协议请求；授权页面仍然使用注册浏览器现有的代理。默认直连是因为实测部分动态代理对 token 轮询连接不稳定。如果所在网络必须通过代理访问 `auth.x.ai`，可将其改为 `true`。
+`cliproxy.xaiOAuthUseProxy` 控制登录态校验、设备码、verify、consent、approve、token 和 userinfo 等全部 OAuth 请求。授权阶段优先复用注册浏览器中的 `sso/sso-rw` Cookie 走协议请求；如果 `accounts.x.ai` 被 Cloudflare 拦截，则自动在当前已登录浏览器中按固定的 `verify` 和 `approve` 表单地址提交，不依赖按钮文案、坐标或人工点击。默认直连是因为部分动态代理对 token 轮询连接不稳定；如果 xAI 登录态受出口 IP 约束，建议将其改为 `true`。
 
 代理链路：
 
@@ -224,7 +224,7 @@ npm run auto-register-mail -- `
 5. 在同一浏览器环境完成邮箱验证。
 6. 完成服务对应的新用户流程。
 7. 读取服务登录会话。
-8. Grok 按配置完成 xAI OAuth，并输出 CLIProxyAPI 认证文件。
+8. Grok 读取浏览器 SSO Cookie，通过协议请求或当前浏览器的固定表单自动完成 xAI Device OAuth，并输出 CLIProxyAPI 认证文件。
 
 主要参数：
 

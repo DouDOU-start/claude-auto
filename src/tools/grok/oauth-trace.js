@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { parseArgs } from "../../core/cli.js";
@@ -69,6 +70,7 @@ async function main() {
       method: options.method || "GET",
       url: sanitizeURL(url),
       form: sanitizeValue(options.form || null),
+      fingerprints: oauthFingerprints(options.form),
       tokenPollCount: isTokenPoll ? tokenPollCount : undefined,
     });
     try {
@@ -76,7 +78,9 @@ async function main() {
       pushEvent(trace, "oauth", "响应", {
         url: sanitizeURL(url),
         status: response.status,
+        headers: sanitizeHeaders(response.headers),
         body: sanitizeValue(response.body),
+        fingerprints: oauthFingerprints(response.body),
         tokenPollCount: isTokenPoll ? tokenPollCount : undefined,
       });
       return response;
@@ -94,6 +98,9 @@ async function main() {
     const token = await authorizeXaiDevice(runtime.cdp, {
       proxyUrl: oauthProxy,
       request: tracedRequest,
+      trace: ({ action, at: _at, ...detail }) => {
+        pushEvent(trace, "oauth-flow", action, detail);
+      },
       updateProgress(message) {
         console.log(message);
         pushEvent(trace, "流程", "进度", { message });
@@ -148,6 +155,7 @@ function installBrowserTrace(cdp, trace) {
         url: sanitizeURL(request.url),
         headers: sanitizeHeaders(request.headers),
         postData: sanitizeFormText(request.postData || ""),
+        fingerprints: oauthFingerprints([request.url, request.postData]),
         initiator: initiator?.type || "",
       });
     }),
@@ -236,6 +244,47 @@ function sanitizeValue(value, key = "") {
     return Object.fromEntries(Object.entries(value).map(([itemKey, item]) => [itemKey, sanitizeValue(item, itemKey)]));
   }
   return typeof value === "string" ? sanitizeText(value) : value;
+}
+
+function oauthFingerprints(value) {
+  const result = {};
+  const collect = (item, key = "") => {
+    if (item === undefined || item === null) return;
+    if (Array.isArray(item)) {
+      for (const child of item) collect(child);
+      return;
+    }
+    if (typeof item === "object") {
+      for (const [childKey, child] of Object.entries(item)) collect(child, childKey);
+      return;
+    }
+    const text = String(item);
+    if (/^(?:user_code|device_code)$/i.test(key) && text) {
+      result[key.toLowerCase()] = fingerprint(text);
+      return;
+    }
+    if (typeof item !== "string") return;
+    try {
+      const parsed = new URL(item);
+      for (const name of ["user_code", "device_code"]) {
+        const secret = parsed.searchParams.get(name);
+        if (secret) result[name] = fingerprint(secret);
+      }
+    } catch {}
+    try {
+      const params = new URLSearchParams(item);
+      for (const name of ["user_code", "device_code"]) {
+        const secret = params.get(name);
+        if (secret) result[name] = fingerprint(secret);
+      }
+    } catch {}
+  };
+  collect(value);
+  return result;
+}
+
+function fingerprint(value) {
+  return createHash("sha256").update(String(value)).digest("hex").slice(0, 12);
 }
 
 function sanitizeText(value) {

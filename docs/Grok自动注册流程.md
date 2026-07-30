@@ -14,8 +14,9 @@ https://grok.com/
 → 填写名字、姓氏和密码
 → 站点执行 Turnstile 校验并创建账号
 → 重定向至 https://grok.com/
+→ 从当前浏览器读取 sso/sso-rw 登录 Cookie
 → 申请 xAI OAuth 设备码
-→ 在当前登录浏览器中确认 Grok Build 授权
+→ 通过协议请求自动完成 verify/consent/approve
 → 轮询取得 OAuth 令牌
 → 生成 CLIProxyAPI xAI 认证文件
 ```
@@ -71,29 +72,38 @@ cf_clearance
 
 ## xAI OAuth 授权
 
-注册完成后复用同一浏览器登录状态执行 OAuth 2.0 Device Authorization Grant。协议参数与 CLIProxyAPI 的 xAI 实现保持一致：
+注册完成后复用同一浏览器中的 `sso` 或 `sso-rw` 登录 Cookie，执行 OAuth 2.0 Device Authorization Grant。授权阶段不再导航浏览器授权页，也不再依赖页面按钮文字和前端脚本。
+
+协议参数：
 
 ```text
 OIDC discovery: https://auth.x.ai/.well-known/openid-configuration
 client_id: b1a00492-073a-47ea-816f-4c329264a828
-scope: openid profile email offline_access grok-cli:access api:access
+scope: openid profile email offline_access grok-cli:access api:access conversations:read conversations:write
 grant_type: urn:ietf:params:oauth:grant-type:device_code
 ```
 
-真实页面流程：
+自动授权流程：
 
 ```text
-https://accounts.x.ai/oauth2/device?user_code=...
-→ Continue
-→ https://accounts.x.ai/oauth2/device/consent?user_code=...
-→ Allow
-→ https://accounts.x.ai/oauth2/device/done
-→ Device Authorized
+读取浏览器 sso/sso-rw Cookie
+→ GET https://accounts.x.ai/ 校验登录态
+→ POST https://auth.x.ai/oauth2/device/code
+→ 协议访问 verification_uri_complete、verify、consent、approve
+→ 如果 accounts.x.ai 被 Cloudflare 拦截，切到当前 Chromium
+→ 按表单 action 精确提交 /oauth2/device/verify
+→ 按表单 action 精确提交 /oauth2/device/approve，action=allow
+→ POST https://auth.x.ai/oauth2/token 轮询令牌
+→ 必要时 GET https://auth.x.ai/oauth2/userinfo 补全邮箱
 ```
 
-同意页依赖页面脚本设置隐藏的授权动作，因此自动化使用真实鼠标事件点击按钮，并在页面跳转后等待前端挂载完成。直接调用表单提交会返回 `Invalid action`。
+程序为 `auth.x.ai` 和 `accounts.x.ai` 发送浏览器中对应的登录 Cookie，并维护授权过程中服务端返回的临时 Cookie。由于协议请求的 TLS 指纹或代理连接可能让账户首页预检跳转到登录页或直接返回 Cloudflare 403，预检结果只用于诊断，不会直接判定 Cookie 失效。协议页面受限时，程序会在同一个已登录 Chromium 页面中打开 `verification_uri_complete`，根据表单的目标地址识别 `verify` 与 `approve`，写入固定字段后直接提交；不会识别按钮文案，也不会依赖鼠标坐标或人工操作。整个 Device Flow 固定使用同一代理出口，并对 `429`、`slow_down`、`invalid_grant` 和授权状态不完整进行有限重试。
 
-令牌轮询支持 `authorization_pending`、`slow_down`、`expired_token` 和 `access_denied`，短暂网络超时会有限重试。access token、refresh token 和 id token 不会打印到终端，只写入 Git 已忽略的认证文件。
+令牌轮询支持 `authorization_pending`、`slow_down`、`expired_token` 和 `access_denied`，短暂网络超时会有限重试。access token、refresh token、id token 和 SSO Cookie 不会打印到终端；CLIProxyAPI 认证文件只写入 OAuth Token，不写入 SSO Cookie。
+
+如果浏览器已经到达 `/oauth2/device/done`，但 Token 端点仍返回 `invalid_grant: Access denied`，说明 SSO 与自动授权步骤都已完成，是 xAI 拒绝为该账号签发 Device OAuth Token。此情况通常属于账号资格或风控限制，不应再按“浏览器登录状态失效”处理。
+
+协议自动确认的实现思路参考了 [wenfxl/openai-cpa](https://github.com/wenfxl/openai-cpa) 的 xAI SSO Device Flow，并按当前项目的 Node.js、CDP、代理桥和 CLIProxyAPI 凭证格式重新适配。
 
 ## CLIProxyAPI 认证文件
 
@@ -138,7 +148,7 @@ exports/cliproxy/xai-<邮箱>.json
 }
 ```
 
-`xaiOAuthUseProxy` 只影响 OAuth 协议请求，授权页面仍随注册浏览器走原有代理。部分动态代理对 token 轮询连接不稳定，因此默认使用直连；确有需要时可配置为 `true`。
+`xaiOAuthUseProxy` 影响 discovery、登录态校验、设备码、verify、consent、approve、token 和 userinfo 等全部 OAuth 协议请求。部分动态代理对 token 轮询连接不稳定，因此默认使用直连；如果注册登录态受出口 IP 约束，建议开启该选项，让授权请求继续使用注册代理。
 
 ## 使用方式
 
