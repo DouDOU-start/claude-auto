@@ -10,14 +10,19 @@ export async function completeGrokOnboarding(cdp, {
   await fillInput(cdp, 'input[data-testid="givenName"]', givenName);
   await fillInput(cdp, 'input[data-testid="familyName"]', familyName);
   await fillInput(cdp, 'input[data-testid="password"]', password);
-  const beforeSubmit = await submissionState(cdp);
-  await submitCompleteSignUp(cdp);
+  const beforeSubmit = await waitForSubmitReady(cdp, signal);
+  await clickCompleteSignUp(cdp);
   if (!beforeSubmit.turnstileReady) {
     updateProgress("正在等待 Grok Turnstile 验证……");
     const turnstileState = await waitForTurnstile(cdp, signal);
     if (!turnstileState.navigated) {
+      await waitWithSignal(800, signal);
+      const readyState = await waitForSubmitReady(cdp, signal, {
+        requireTurnstile: true,
+      });
+      if (readyState.navigated) return readyState;
       updateProgress("Turnstile 验证已完成，正在提交注册资料……");
-      await submitCompleteSignUp(cdp);
+      await clickCompleteSignUp(cdp);
     }
   }
 
@@ -66,11 +71,15 @@ async function fillInput(cdp, selector, value) {
   await cdp.send("Input.insertText", { text: String(value) });
 }
 
-async function submitCompleteSignUp(cdp) {
-  const result = await cdp.evaluate(`
+export async function clickCompleteSignUp(cdp) {
+  const target = await cdp.evaluate(`
     (() => {
       const button = [...document.querySelectorAll("button")]
-        .find((item) => /Complete sign up/i.test(item.textContent || "") && !item.disabled);
+        .find((item) =>
+          /Complete sign up/i.test(item.textContent || "") &&
+          item.offsetParent !== null &&
+          !item.disabled
+        );
       if (!button) return { ok: false, reason: "未找到完成注册按钮" };
       const form = button.closest("form");
       if (!form) return { ok: false, reason: "完成注册按钮不在表单中" };
@@ -78,15 +87,68 @@ async function submitCompleteSignUp(cdp) {
         return { ok: false, reason: "注册资料未通过浏览器表单校验" };
       }
       button.scrollIntoView({ block: "center", inline: "center" });
-      if (typeof form.requestSubmit === "function") {
-        form.requestSubmit(button);
-        return { ok: true, mode: "requestSubmit" };
+      const rect = button.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        return { ok: false, reason: "完成注册按钮当前不可见" };
       }
-      button.click();
-      return { ok: true, mode: "click" };
+      return {
+        ok: true,
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+      };
     })()
   `);
-  if (!result?.ok) throw new Error(`未能提交 Grok 注册资料：${result?.reason || "未知原因"}`);
+  if (!target?.ok) {
+    throw new Error(`未能提交 Grok 注册资料：${target?.reason || "未知原因"}`);
+  }
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: target.x,
+    y: target.y,
+  });
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    x: target.x,
+    y: target.y,
+    button: "left",
+    clickCount: 1,
+  });
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    x: target.x,
+    y: target.y,
+    button: "left",
+    clickCount: 1,
+  });
+}
+
+async function waitForSubmitReady(cdp, signal, {
+  requireTurnstile = false,
+} = {}) {
+  const deadline = Date.now() + 15000;
+  let state = null;
+  while (Date.now() < deadline) {
+    throwIfAborted(signal);
+    state = await submissionState(cdp).catch(() => null);
+    if (state?.navigated) return state;
+    if (
+      state?.buttonVisible &&
+      !state.buttonDisabled &&
+      state.formValid &&
+      (!requireTurnstile || state.turnstileReady)
+    ) {
+      return state;
+    }
+    const formError = detectFormError(state?.text || "");
+    if (formError) throw new Error(`Grok 账号创建失败：${formError}`);
+    await waitWithSignal(300, signal);
+  }
+
+  throwIfAborted(signal);
+  const reason = requireTurnstile
+    ? "Grok Turnstile 验证完成后，注册按钮未进入可提交状态"
+    : "Grok 注册按钮未进入可提交状态";
+  throw new Error(`${reason}。页面状态：${JSON.stringify(state)}`);
 }
 
 async function waitForTurnstile(cdp, signal) {
@@ -119,6 +181,7 @@ async function submissionState(cdp) {
         navigated: location.href.startsWith("https://grok.com/"),
         turnstileReady: Boolean(token?.value),
         turnstileTokenLength: token?.value?.length || 0,
+        buttonVisible: Boolean(button && button.offsetParent !== null),
         buttonDisabled: Boolean(button?.disabled),
         formValid: Boolean(form?.checkValidity())
       };
