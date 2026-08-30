@@ -25,6 +25,7 @@ export function loadClaudeConfig({ projectRoot, env = process.env, overrides = {
     browserPath:
       overrides.browserPath ??
       overrides.chrome ??
+      env.APP_BROWSER_PATH ??
       env.CLAUDE_BROWSER_PATH ??
       fileConfig.browser?.path ??
       "",

@@ -23,7 +23,7 @@
 
 ## 环境要求
 
-- Windows 或 Linux
+- Windows、macOS 或 Linux
 - Node.js 22+
 - 首次运行需要网络下载 Chromium
 
@@ -35,10 +35,11 @@
 
 1. `--chrome <path>`
 2. `APP_BROWSER_PATH`（兼容 `CLAUDE_BROWSER_PATH`）
-3. 项目本地 `browsers/`
-4. 自动下载到项目本地 `browsers/`
-5. Playwright 浏览器缓存
-6. 系统 Chrome
+3. `config/app.local.json` 中的 `browser.path`
+4. 项目本地 `browsers/`（Windows、macOS 和 Linux 均优先使用）
+5. 自动下载到项目本地 `browsers/`
+6. Playwright 浏览器缓存
+7. 系统 Chrome
 
 手动安装浏览器：
 

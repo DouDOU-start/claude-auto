@@ -9,7 +9,13 @@ import { pollVerificationMessage } from "../src/mail/poller.js";
 import { parseMailAccountLine } from "../src/mail/account.js";
 import { availableRegistrationProviders, getRegistrationProvider } from "../src/providers/index.js";
 import { extractClaudeMagicLink } from "../src/providers/claude/mail.js";
-import { validateClaudeMagicLink } from "../src/providers/claude/login.js";
+import {
+  claudePendingLoginCookieRemoval,
+  classifyClaudeMagicLinkState,
+  extractClaudeVerificationCode,
+  sendClaudeMagicLink,
+  validateClaudeMagicLink,
+} from "../src/providers/claude/login.js";
 import { extractGrokVerificationCode } from "../src/providers/grok/mail.js";
 import {
   normalizeGrokVerificationCode,
@@ -35,6 +41,87 @@ test("Claude Magic Link 提取会校验目标邮箱", () => {
   assert.equal(extractClaudeMagicLink(content, "other@example.com"), "");
   assert.doesNotThrow(() => validateClaudeMagicLink(link, email));
   assert.throws(() => validateClaudeMagicLink(link, "other@example.com"), /邮箱不匹配/);
+});
+
+test("Claude Magic Link 页面能提取新版 6 位验证码并分类", () => {
+  const text = [
+    "Use verification code to continue",
+    "Enter this verification code where you first tried to sign in:",
+    "482917",
+    "Copy Code",
+    "Sign in here instead",
+  ].join("\n");
+  assert.equal(extractClaudeVerificationCode(text), "482917");
+  assert.deepEqual(classifyClaudeMagicLinkState({ text }), { kind: "code", code: "482917" });
+  assert.deepEqual(
+    classifyClaudeMagicLinkState({ text: "Let's create your account\nWhat is your name?" }),
+    { kind: "onboarding" },
+  );
+  assert.deepEqual(classifyClaudeMagicLinkState({ text: "Loading…" }), { kind: "pending" });
+});
+
+test("Claude 发送 Magic Link 会点击 Continue 并读取网络响应", async () => {
+  const calls = [];
+  let requestPolls = 0;
+  const cdp = {
+    evaluate(expression) {
+      calls.push({ method: "Runtime.evaluate", expression });
+      if (expression.includes("const buttons = [...document.querySelectorAll")) {
+        return Promise.resolve({ x: 11, y: 22, text: "Continue" });
+      }
+      if (expression.includes("href: location.href")) {
+        return Promise.resolve({
+          href: "https://claude.ai/login",
+          title: "Sign in - Claude",
+          text: "To continue, click the link sent to your email.",
+          hasEmailInput: false,
+          hasCodeInput: false,
+          hasEmailSent: true,
+        });
+      }
+      throw new Error(`unexpected evaluate expression: ${expression.slice(0, 80)}`);
+    },
+    interestingRequests() {
+      requestPolls += 1;
+      if (requestPolls === 1) return [];
+      return [
+        {
+          requestId: "request-1",
+          request: { url: "https://claude.ai/api/auth/send_magic_link" },
+          response: {
+            status: 200,
+            statusText: "OK",
+            headers: { "content-type": "application/json" },
+          },
+        },
+      ];
+    },
+    send(method, params) {
+      calls.push({ method, params });
+      if (method === "Network.getResponseBody") {
+        return Promise.resolve({ body: JSON.stringify({ sent: true }) });
+      }
+      return Promise.resolve({});
+    },
+  };
+
+  const result = await sendClaudeMagicLink(cdp, "user@example.com");
+
+  assert.equal(result.status, 200);
+  assert.equal(result.statusText, "OK");
+  assert.equal(JSON.parse(result.responseText).sent, true);
+  assert.deepEqual(
+    calls.filter((call) => call.method === "Input.dispatchMouseEvent").map((call) => call.params.type),
+    ["mouseMoved", "mousePressed", "mouseReleased"],
+  );
+  assert.equal(calls.filter((call) => call.method === "Network.getResponseBody").length, 1);
+});
+
+test("Claude 会生成删除 pending-login cookie 的指令", () => {
+  assert.equal(
+    claudePendingLoginCookieRemoval(),
+    "__Host-claude-ai-pending-login-email=; Max-Age=0; Path=/; SameSite=Lax; Secure",
+  );
 });
 
 test("通用邮件轮询器不依赖具体站点", async () => {

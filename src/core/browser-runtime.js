@@ -3,11 +3,17 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { resolveBrowserPath } from "../browser-utils.js";
+import { readAppConfig } from "../config.js";
 import { parseProxyUrl, startProxyBridge } from "../proxy-bridge.js";
 import { CdpClient, findPage } from "../cdp-client.js";
 import { throwIfAborted } from "./abort.js";
 
-const DEFAULT_CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+const DEFAULT_CHROME =
+  process.platform === "darwin"
+    ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    : process.platform === "linux"
+      ? "/usr/bin/google-chrome"
+      : "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 
 export function projectRootFrom(metaUrl) {
   return resolve(new URL("../..", metaUrl).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
@@ -28,8 +34,10 @@ export async function openBrowserRuntime({
   devtoolsTimeout = 30000,
   signal,
 }) {
+  const configuredBrowserPath = readAppConfig(projectRoot).browser?.path || "";
   const executable = resolveBrowserPath({
     requestedPath: chromePath,
+    configuredPath: configuredBrowserPath,
     projectRoot,
     fallbackPath: DEFAULT_CHROME,
   });

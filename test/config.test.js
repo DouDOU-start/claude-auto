@@ -103,6 +103,38 @@ test("注册代理优先读取通用环境变量并兼容旧变量", async () =>
   }
 });
 
+test("Claude 浏览器路径优先读取通用环境变量并兼容旧变量", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "browser-config-priority-test-"));
+  try {
+    await mkdir(join(projectRoot, "config"));
+    await writeFile(
+      join(projectRoot, "config", "app.local.json"),
+      JSON.stringify({ browser: { path: "/configured-browser" } }),
+      "utf8",
+    );
+    assert.equal(
+      loadClaudeConfig({
+        projectRoot,
+        env: {
+          APP_BROWSER_PATH: "/app-environment-browser",
+          CLAUDE_BROWSER_PATH: "/legacy-environment-browser",
+          DISPLAY: "1",
+        },
+      }).browserPath,
+      "/app-environment-browser",
+    );
+    assert.equal(
+      loadClaudeConfig({
+        projectRoot,
+        env: { CLAUDE_BROWSER_PATH: "/legacy-environment-browser", DISPLAY: "1" },
+      }).browserPath,
+      "/legacy-environment-browser",
+    );
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
 test("随机邮箱后缀支持命令行、环境变量和统一配置优先级", async () => {
   const projectRoot = await mkdtemp(join(tmpdir(), "email-domain-config-test-"));
   try {

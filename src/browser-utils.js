@@ -2,8 +2,18 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-export function resolveBrowserPath({ requestedPath = "", projectRoot, fallbackPath = "", autoInstall = true }) {
-  const explicitPath = requestedPath || process.env.APP_BROWSER_PATH || process.env.CLAUDE_BROWSER_PATH || "";
+const MAX_BROWSER_SEARCH_DEPTH = 6;
+
+export function resolveBrowserPath({
+  requestedPath = "",
+  configuredPath = "",
+  projectRoot,
+  fallbackPath = "",
+  autoInstall = true,
+  env = process.env,
+}) {
+  const explicitPath =
+    requestedPath || env.APP_BROWSER_PATH || env.CLAUDE_BROWSER_PATH || configuredPath || "";
   if (explicitPath) {
     if (existsSync(explicitPath)) return explicitPath;
     throw new Error(`配置的浏览器可执行文件不存在：${explicitPath}`);
@@ -16,8 +26,8 @@ export function resolveBrowserPath({ requestedPath = "", projectRoot, fallbackPa
   if (
     autoInstall &&
     projectRoot &&
-    process.env.APP_SKIP_BROWSER_DOWNLOAD !== "1" &&
-    process.env.CLAUDE_SKIP_BROWSER_DOWNLOAD !== "1"
+    env.APP_SKIP_BROWSER_DOWNLOAD !== "1" &&
+    env.CLAUDE_SKIP_BROWSER_DOWNLOAD !== "1"
   ) {
     try {
       return installProjectBrowser(projectRoot);
@@ -38,6 +48,7 @@ export function resolveBrowserPath({ requestedPath = "", projectRoot, fallbackPa
       "可执行 `npm run install-browser` 手动安装，",
       "也可以传入 --chrome <路径>，",
       "或设置 APP_BROWSER_PATH（兼容 CLAUDE_BROWSER_PATH）。",
+      "还可以在 config/app.local.json 中设置 browser.path。",
       installHint,
     ].join(" "),
   );
@@ -80,12 +91,12 @@ function installCommand() {
   return [args[0], args.slice(1)];
 }
 
-export function projectBrowserCandidates(projectRoot) {
+export function projectBrowserCandidates(projectRoot, platform = process.platform) {
   const root = join(projectRoot, "browsers");
   if (!existsSync(root)) return [];
 
   const candidates = [];
-  collectChromeExecutables(root, candidates, 0);
+  collectChromeExecutables(root, candidates, 0, browserExecutableNames(platform));
   return candidates.sort((a, b) => b.localeCompare(a));
 }
 
@@ -97,14 +108,15 @@ export function playwrightBrowserCandidates() {
   ].filter(Boolean);
 
   const candidates = [];
+  const executableNames = browserExecutableNames(process.platform);
   for (const root of roots) {
-    if (existsSync(root)) collectChromeExecutables(root, candidates, 0);
+    if (existsSync(root)) collectChromeExecutables(root, candidates, 0, executableNames);
   }
   return [...new Set(candidates)].sort((a, b) => b.localeCompare(a));
 }
 
-function collectChromeExecutables(dir, candidates, depth) {
-  if (depth > 4) return;
+function collectChromeExecutables(dir, candidates, depth, executableNames) {
+  if (depth > MAX_BROWSER_SEARCH_DEPTH) return;
 
   let entries;
   try {
@@ -122,10 +134,10 @@ function collectChromeExecutables(dir, candidates, depth) {
       continue;
     }
     if (stat.isDirectory()) {
-      collectChromeExecutables(path, candidates, depth + 1);
+      collectChromeExecutables(path, candidates, depth + 1, executableNames);
       continue;
     }
-    if (entry.toLowerCase() === chromeExecutableName()) {
+    if (executableNames.has(entry.toLowerCase())) {
       candidates.push(path);
     }
   }
@@ -135,6 +147,10 @@ function firstExisting(candidates) {
   return candidates.find((candidate) => existsSync(candidate)) || "";
 }
 
-function chromeExecutableName() {
-  return process.platform === "win32" ? "chrome.exe" : process.platform === "darwin" ? "Chromium" : "chrome";
+function browserExecutableNames(platform) {
+  if (platform === "win32") return new Set(["chrome.exe"]);
+  if (platform === "darwin") {
+    return new Set(["chromium", "google chrome", "google chrome for testing"]);
+  }
+  return new Set(["chrome", "chromium", "google-chrome", "google-chrome-stable"]);
 }

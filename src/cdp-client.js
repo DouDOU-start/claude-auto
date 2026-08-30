@@ -1,19 +1,38 @@
-export async function findPage(debugPort, { urlIncludes = "", timeoutMs = 5000 } = {}) {
+export async function findPage(
+  debugPort,
+  { urlIncludes = "", targetId = "", timeoutMs = 5000 } = {},
+) {
   const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
   do {
     const targets = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
     const page = urlIncludes
       ? targets.find(
-          (target) => target.type === "page" && String(target.url || "").includes(urlIncludes),
+          (target) =>
+            target.type === "page" &&
+            (!targetId || target.id === targetId) &&
+            String(target.url || "").includes(urlIncludes),
         )
-      : targets.find((target) => target.type === "page");
+      : targets.find((target) => target.type === "page" && (!targetId || target.id === targetId));
     if (page?.webSocketDebuggerUrl) return page;
     if (Date.now() >= deadline) break;
     await new Promise((resolveWait) => setTimeout(resolveWait, 100));
   } while (true);
 
-  const targetDescription = urlIncludes ? `匹配 ${JSON.stringify(urlIncludes)} 的` : "可用的";
+  const targetDescription = targetId
+    ? `目标 ${JSON.stringify(targetId)} 对应的`
+    : urlIncludes
+      ? `匹配 ${JSON.stringify(urlIncludes)} 的`
+      : "可用的";
   throw new Error(`DevTools 端口 ${debugPort} 上没有${targetDescription}页面目标。`);
+}
+
+export function debugPortFromWebSocketUrl(wsUrl) {
+  try {
+    const port = Number(new URL(String(wsUrl)).port);
+    return Number.isInteger(port) && port > 0 ? port : 0;
+  } catch {
+    return 0;
+  }
 }
 
 export function findClaudePage(debugPort) {

@@ -38,8 +38,8 @@ export const claudeRegistrationProvider = Object.freeze({
     return fillClaudeEmail(cdp, email);
   },
 
-  sendVerification(cdp, email) {
-    return sendClaudeMagicLink(cdp, email);
+  sendVerification(cdp, email, { signal } = {}) {
+    return sendClaudeMagicLink(cdp, email, { signal });
   },
 
   verificationWasSent(result) {
@@ -51,7 +51,7 @@ export const claudeRegistrationProvider = Object.freeze({
   },
 
   completeVerification(cdp, url, { signal }) {
-    return openClaudeMagicLink(cdp, url, signal);
+    return openClaudeMagicLink(cdp, url, { signal });
   },
 
   completeOnboarding(cdp, { profile, signal }) {
